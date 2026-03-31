@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <title>问题及答案</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+</head>
+<body>
+<!--输出数据-->
+<table style="margin: auto">
+  <!--  -->
+   <tr> <td><p th:text="'问题序号: '+${qid}+ '                     问题类型: '+ ${qdomain}"></p></td></tr>
+   <tr style="font-size: 16pt; color: blue"> <td><p th:text="'问题:  '+${qzh}"></p></td></tr>
+   <tr> <td><p th:text="'问题英文:  '+${qen}"></p></td></tr>
+   <tr> <td>  <hr> </td></tr>
+   <tr style="font-size: 16pt; color: blue"> <td><p th:text="'答案:  '+${azh}"></p></td></tr>
+   <tr> <td><p th:text="'答案英文:  '+${aen}"></p></td></tr>
+   <tr> <td>  <p th:text="'答案序号:  '+${aid}"></p></td></tr>
+
+ </table>
+
+ </body>
+ </html>

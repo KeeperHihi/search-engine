@@ -1,0 +1,28 @@
+# Maven / Java build output
+target/
+out/
+build/
+*.class
+
+# JVM crash logs
+hs_err_pid*
+replay_pid*
+
+# IDE settings
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# Node.js dependencies and logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db

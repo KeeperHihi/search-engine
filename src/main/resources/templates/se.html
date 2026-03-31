@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8"/>
+  <title>Java-全文搜索</title>
+  <link rel="stylesheet" th:href="@{/css/stylese.css}"/>
+</head>
+
+<body class="pg">
+<div id="app">
+  <div class="page" id="mallPage">
+
+    <!-- 头部搜索 -->
+
+    <div id="header" class=" header-list-app">
+      <div class="headerLayout">
+        <div class="headerCon ">
+          <!-- Logo-->
+          <h1 id="mallLogo">
+            <img th:src="@{/images/selogo.png}" alt="" height="80%" width="80%">
+          </h1>
+
+          <div class="header-extra">
+
+            <!--搜索                        <input v-model.trim="keyword" id="keyword" @keyup="getAddress">-->
+            <div id="mallSearch">
+
+              <form name="searchTop" >
+                <!--搜索
+              <select name="selectIndex" style="font-size: 16pt; alignment: right">
+                <option value="question">问题</option>
+                <option value="answer">答案</option>
+              </select>
+              -->
+              <fieldset class="mallSearch-form clearfix">
+                <legend>全文搜索</legend>
+                <div class="mallSearch-input clearfix">
+                  <div class="s-combobox" id="s-combobox-685">
+                    <div class="s-combobox-input-wrap">
+                      <input v-model="keyword" type="text" autocomplete="off" value="" id="mq"
+                             class="s-combobox-input" aria-haspopup="true">
+                    </div>
+                  </div>
+                  <button @click.prevent="searchPage" type="submit" id="searchbtn" style="font-size: 16pt">搜索</button>
+
+                </div>
+              </fieldset>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="page" id="content">
+  <div>
+    <!-- 结果详情 -->
+      <div>
+          <p> <br> </p>
+          <div v-for="(item,i) in results">
+            <table style="margin: auto" width="600">
+              <tr> <td colspan="3"></td> </tr>
+            <div>
+              <tr style="font-size: 16pt; color: blue">
+                <!--一行一个问题-->
+                <td width="50">{{i}}. </td>
+              <td width="200" colspan="2" align="left">
+                <a @click.prevent="searchId(item.qid)" v-html="item.qzh"></a>
+
+              </td>
+              </tr>
+              <tr style="font-size: 12pt; color:black">
+                <td width="50">
+                  <a v-html="item.qid"></a>
+
+                </td>
+              <td width="200" colspan="2">
+                  <em>{{item.qdomain}}</em>
+              </td>
+                </tr>
+                <tr style="font-size: 12pt; color:black">
+                  <td width="200" colspan="3">
+                    <a v-html="item.qen"></a>
+                  </td>
+
+              </tr>
+            </div>
+              <tr><td colspan="3"></td></tr>
+              <tr><td colspan="3"></td></tr>
+            </table>
+          </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</body>
+
+<script src="./js/vue.min.js"></script>
+<script src="./js/axios.min.js"></script>
+<script type="text/javascript">
+  var vm = new Vue({
+    el:'#app',
+    data:{
+      keyword:"",  //搜索关键字
+      flag1:false,
+      flag2:true,
+      s1:"localhost:8080/search/java/1/10",
+      address:"",
+      results:[]  //搜索结果
+    },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8'
+    },
+    methods:{
+      searchPage(){
+        flag1=true;
+        flag2=false;
+        var keyword = this.keyword.toString();
+        console.info(keyword);
+        axios.request({
+            method: "POST",
+            url:"http://localhost:8080/queryse",
+            params:{
+              keyword:this.keyword,
+              pageNo:1,
+              pageSize:100
+            }
+        }).then(response=>{
+          this.results=response.data;
+          //this.address=response.data.toString();
+        })
+      },
+      searchId(qid){
+        window.location.href = "http://localhost:8080/searchAn/"+qid;
+      }
+
+    }
+  })
+</script>
+
+</html>
