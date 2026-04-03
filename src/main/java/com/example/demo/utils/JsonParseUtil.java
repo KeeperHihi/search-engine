@@ -12,7 +12,6 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Component;
-
 import java.io.*;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -23,33 +22,27 @@ import java.util.Set;
 
 
 @Component
-
-
 public class JsonParseUtil {
-//    public static void main(String[] args) throws IOException {
-//        String file_path="D:/insuranceqa_data/corpus/pool/trainnew.json";
-//        List<Question> ql=new JsonParseUtil().parseJson(file_path);
-////        System.out.println(ql.size());
-//    }
+    // public static void main(String[] args) throws IOException {
+    //     String file_path="D:/insuranceqa_data/corpus/pool/trainnew.json";
+    //     List<Question> ql=new JsonParseUtil().parseJson(file_path);
+    //     // System.out.println(ql.size());
+    // }
 
     public List<Question> parseJson(String json_file_path) throws IOException {
         File jsonFile = new File(json_file_path);
-        String jsonStr="";
-        List<Question> questionList=null;
-
-
-
+        String jsonStr = "";
+        List<Question> questionList = null;
 
         try {
-
-//            BufferedReader in = new BufferedReader(new InputStreamReader(
-//                    new FileInputStream(jsonFile), "UTF-8"));
-//
-//            StringBuffer bs = new StringBuffer();
-//            String l = null;
-//            while((l=in.readLine())!=null){
-//                bs.append(l).append("/n");
-//            }
+            // BufferedReader in = new BufferedReader(new InputStreamReader(
+            //     new FileInputStream(jsonFile), "UTF-8")
+            // );
+            // StringBuffer bs = new StringBuffer();
+            // String l = null;
+            // while((l=in.readLine())!=null){
+            //     bs.append(l).append("/n");
+            // }
             Reader reader = new InputStreamReader(new FileInputStream(jsonFile),"utf-8");
             int ch = 0;
             StringBuffer sb = new StringBuffer();
@@ -63,28 +56,26 @@ public class JsonParseUtil {
             e.printStackTrace();
         }
 
-
-
-//        System.out.println(jsonStr.substring(0,100));
+        // System.out.println(jsonStr.substring(0,100));
         JSONArray jsonArr = JSON.parseArray(jsonStr);
-//        System.out.println(jsonArr.toString().substring(0,100));
-        //ArrayList<Question> qList = new ArrayList<>();
+        // System.out.println(jsonArr.toString().substring(0,100));
+        // ArrayList<Question> qList = new ArrayList<>();
         questionList = jsonArr.toJavaList(Question.class);//转化为特定的List
-//        System.out.println(questionList.size());
+        // System.out.println(questionList.size());
 
-//       ---------------采用jsonobject keyset方法获得list
-//        //转json对象
-//        JSONObject ids = (JSONObject)JSONObject.parse(jsonStr);
-//        //Set<String> stringSet=ids.keySet();
-//        Set<String> stringSet = ids.keySet();
-//        //获取主要数据
-//        String keystr="";
-//        for (String str : stringSet) {
-//            keystr=str;-
-//            JSONObject ob=ids.getJSONObject(keystr);
-//            System.out.println(ob.get("zh"));
-//
-//        }
+        // ---------------采用jsonobject keyset方法获得list
+        // //转json对象
+        // JSONObject ids = (JSONObject)JSONObject.parse(jsonStr);
+        // //Set<String> stringSet=ids.keySet();
+        // Set<String> stringSet = ids.keySet();
+        // //获取主要数据
+        // String keystr="";
+        // for (String str : stringSet) {
+        //     keystr=str;-
+        //     JSONObject ob=ids.getJSONObject(keystr);
+        //     System.out.println(ob.get("zh"));
+
+        // }
 
         return questionList;
     }

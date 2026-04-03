@@ -1,8 +1,6 @@
 package com.example.demo.controller;
 
-
 import com.example.demo.EsDoc;
-
 import com.example.demo.service.ContentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -10,26 +8,28 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 
-//@RestController
+// @RestController
 @Controller
-
 public class HelloController {
 
     @Autowired
     private ContentService contentService2;
 
-    @GetMapping({"/","index"})
+    @GetMapping({"/", "index"})
     public String index(){
         return "index";
     }
     @GetMapping("/jdsearch")
     public String hello2(Model model){
+        /*
+        Spring 不会把 "jdsearch" 这个字符串直接显示给浏览器，而是会去找：
+        src/main/resources/templates/jdsearch.html
+        */
         return "jdsearch";
     }
 

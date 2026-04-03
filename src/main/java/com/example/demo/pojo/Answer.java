@@ -7,9 +7,8 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class Answer{
+public class Answer {
     private String aid;
     private String azh;
     private String aen;
-
 }
