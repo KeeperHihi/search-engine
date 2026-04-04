@@ -3,7 +3,10 @@ package com.example.demo;
 import com.alibaba.fastjson2.JSON;
 import com.example.demo.constants.EsIndexNames;
 import com.example.demo.pojo.Content;
+import com.example.demo.utils.ApplicationPropertiesUtil;
+import com.example.demo.utils.ContentDocumentIdUtil;
 import com.example.demo.utils.JsonParseUtil;
+import com.example.demo.utils.StandaloneElasticsearchClientFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -13,10 +16,12 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import org.apache.http.HttpHost;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
@@ -30,7 +35,6 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.action.update.UpdateResponse;
 import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentType;
@@ -42,8 +46,7 @@ public class EsJDDoc {
 
     public static void main(String[] args) throws IOException {
         // 创建客户端对象
-        RestHighLevelClient client =
-            new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
+        RestHighLevelClient client = StandaloneElasticsearchClientFactory.createClient();
         createDoc(client);
         //        bulkCreateDoc(client);
         String str = getDoc(client);
@@ -61,7 +64,7 @@ public class EsJDDoc {
         List<Map<String, Object>> list = searchPage(client);
         jsonstr = JSON.toJSONString(list);
 
-        filePath = "./data/jddata.json";
+        filePath = getJdDataFilePath();
         try {
             File file = new File(filePath);
             // 创建文件
@@ -81,17 +84,28 @@ public class EsJDDoc {
     public static boolean writeJDdata(RestHighLevelClient client) throws IOException {
 
         // write quesitons into ES
-        String file_path = "./data/jddata.json";
+        String file_path = getJdDataFilePath();
         List<Content> goodsList = new JsonParseUtil().parseJDJson(file_path);
 
         // 把查询的数据放入 es 中
         BulkRequest request = new BulkRequest();
         request.timeout("2m");
+        Set<String> processedDocumentIds = new HashSet<String>();
 
         for (int i = 0; i < goodsList.size(); i++) {
+            Content content = goodsList.get(i);
+            String documentId = ContentDocumentIdUtil.buildDocumentId(content);
+            if (!processedDocumentIds.add(documentId)) {
+                continue;
+            }
             request.add(
                 new IndexRequest(EsIndexNames.JD_DATA)
-                    .source(com.alibaba.fastjson.JSON.toJSONString(goodsList.get(i)), XContentType.JSON));
+                    .id(documentId)
+                    .source(com.alibaba.fastjson.JSON.toJSONString(content), XContentType.JSON));
+        }
+
+        if (request.numberOfActions() == 0) {
+            return true;
         }
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
 
@@ -113,9 +127,10 @@ public class EsJDDoc {
         SearchRequest searchRequest = new SearchRequest(EsIndexNames.JD_DATA);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
-        // 分页
-        sourceBuilder.from(pageNo).size(pageSize);
+        // Elasticsearch 的 from 是偏移量，不是页码。
+        sourceBuilder.from((pageNo - 1) * pageSize).size(pageSize);
         List<Map<String, Object>> list = new ArrayList<>();
+        Set<String> documentIds = new HashSet<String>();
 
         List<String> keywordlist = new ArrayList<>();
 
@@ -140,10 +155,19 @@ public class EsJDDoc {
             // 解析结果
 
             for (SearchHit documentFields : searchResponse.getHits().getHits()) {
-                list.add(documentFields.getSourceAsMap());
+                Map<String, Object> sourceMap = documentFields.getSourceAsMap();
+                String documentId = ContentDocumentIdUtil.buildDocumentId(sourceMap);
+                if (documentIds.add(documentId)) {
+                    list.add(sourceMap);
+                }
             }
         }
         return list;
+    }
+
+    private static String getJdDataFilePath() throws IOException {
+        Properties properties = ApplicationPropertiesUtil.loadApplicationProperties();
+        return ApplicationPropertiesUtil.getRequiredProperty(properties, "search.data.jd-file-path");
     }
 
     // 创建文档

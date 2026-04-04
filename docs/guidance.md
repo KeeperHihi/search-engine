@@ -194,7 +194,7 @@ public String hello2(Model model){
 ```javascript
 axios.request({
     method: "POST",
-    url:"http://localhost:8080/query",
+    url:"/query",
     params:{
       keyword:this.keyword,
       pageNo:1,
@@ -335,7 +335,7 @@ public String se(Model model){
 ```javascript
 axios.request({
     method: "POST",
-    url:"http://localhost:8080/queryse",
+    url:"/queryse",
     params:{
       keyword:this.keyword,
       pageNo:1,
@@ -416,7 +416,7 @@ insurance_question
 
 ```javascript
 searchId(qid){
-  window.location.href = "http://localhost:8080/searchAn/"+qid;
+  window.location.href = "/searchAn/"+qid;
 }
 ```
 
@@ -583,11 +583,18 @@ jddata
 
 ### 7.2 问答数据来源：本地 JSON
 
-`ContentService.writeQAContent()` 会从两个固定路径读取数据：
+`ContentService.writeQAContent()` 会从配置文件读取两个问答数据路径：
 
 ```text
-D:/insuranceqa_data/corpus/pool/trainnew.json
-D:/insuranceqa_data/corpus/pool/answersnew.json
+search.data.question-file-path
+search.data.answer-file-path
+```
+
+默认值分别是：
+
+```text
+./data/trainnew.json
+./data/answersnew.json
 ```
 
 然后分别写入：
@@ -662,16 +669,18 @@ GET /writeQA
 
 作用：创建 ES 客户端。
 
-现在写死的是：
+现在是通过配置文件注入：
 
-```java
-new HttpHost("127.0.0.1", 9200, "http")
+```properties
+search.elasticsearch.host=127.0.0.1
+search.elasticsearch.port=9200
+search.elasticsearch.scheme=http
 ```
 
 也就是说：
 
-1. ES 默认必须在本机
-2. 端口必须是 `9200`
+1. ES 默认仍然指向本机
+2. 但主机、端口、协议都可以通过配置调整
 
 ### 8.6 `MyWebMvcConfig`
 
@@ -695,7 +704,7 @@ new HttpHost("127.0.0.1", 9200, "http")
 - 允许任意请求头
 - 允许任意方法
 
-页面里很多 `axios` 请求把地址直接写成 `http://localhost:8080/...`，所以这个配置能减少跨域问题。
+当前主页面已经改成相对路径请求，所以在同源部署时不再依赖固定的 `localhost:8080` 地址。
 
 ### 8.8 `HtmlParseUtil`
 
@@ -977,9 +986,9 @@ public String index(){
 
 现在这两条链路都已经统一到了 `jddata`，但理解这个历史问题依然有价值，因为它解释了为什么仓库里会同时出现过两个商品索引名。
 
-### 13.3 `pageNo` 不是标准分页写法
+### 13.3 分页语义已经修正为标准写法
 
-在 `searchPage()` 和 `searchQA()` 里：
+历史上这里写成：
 
 ```java
 sourceBuilder.from(pageNo).size(pageSize);
@@ -991,39 +1000,43 @@ sourceBuilder.from(pageNo).size(pageSize);
 from = (pageNo - 1) * pageSize
 ```
 
-但这里直接把 `pageNo` 当成了 `from` 偏移量。
+当前代码已经改成标准写法：
 
-所以如果你后面要做真正分页，这里必须改。
-
-### 13.4 问答导入路径写死在 Windows 盘符
-
-`writeQAContent()` 使用的是：
-
-```text
-D:/insuranceqa_data/corpus/pool/trainnew.json
-D:/insuranceqa_data/corpus/pool/answersnew.json
+```java
+sourceBuilder.from((pageNo - 1) * pageSize).size(pageSize);
 ```
 
-这说明：
+### 13.4 问答导入路径已经迁移到配置文件
 
-1. 代码最初作者大概率在 Windows 上开发
-2. 换机器后很可能直接失效
-3. 这类路径最好改成配置文件或相对路径
+现在通过下面两个配置项控制：
 
-### 13.5 页面里把后端地址写死成 `http://localhost:8080`
+```text
+search.data.question-file-path
+search.data.answer-file-path
+```
 
-例如：
+默认值是：
+
+```text
+./data/trainnew.json
+./data/answersnew.json
+```
+
+### 13.5 页面请求已经改成相对路径
+
+历史上页面里是：
 
 ```javascript
 url:"http://localhost:8080/query"
 window.location.href = "http://localhost:8080/searchAn/"+qid;
 ```
 
-问题是：
+现在已经改成：
 
-1. 如果端口改了，会失效
-2. 如果部署到服务器域名上，也会失效
-3. 更推荐改成相对路径，如 `/query`、`/searchAn/xxx`
+```javascript
+url:"/query"
+window.location.href = "/searchAn/"+qid;
+```
 
 ### 13.6 `searchAnswer()` 解析答案 id 的方式比较脆弱
 
@@ -1147,8 +1160,8 @@ ES 客户端配置写死为：
 
 1. 改 `answer.html` 的显示文字
 2. 在 `jdsearch.html` 增加一个字段展示
-3. 把 `localhost:8080` 改成相对路径
-4. 把硬编码文件路径提到配置文件里
+3. 调整 `application.properties` 里的数据或 ES 配置
+4. 给商品搜索补更多字段或排序逻辑
 
 这样你会最快建立信心。
 

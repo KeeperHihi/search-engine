@@ -32,7 +32,7 @@ public class ContentController {
     }
 
     @GetMapping("/search/{keyword}/{pageNo}/{pageSize}")
-    // @CrossOrigin(origin = {"http://127.0.0.1:8080"})//添加来源地址
+    // @CrossOrigin(origin = {"*"}) // 如果后续拆成独立前后端，可按实际来源收紧。
     public List<Map<String, Object>> search(
             @PathVariable("keyword") String keyword,
             @PathVariable("pageNo") int pageNo,

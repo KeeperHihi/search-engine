@@ -44,14 +44,19 @@ public class HtmlParseUtil {
             if (el.attr("class").equalsIgnoreCase("gl-item")) {
                 // 关于这种图片特别多的网页,所有的图片都是延迟加载的
                 // 在jd搜索后f12可以看到存放在data-lazy-img中
+                String sku = el.attr("data-sku");
                 String img = el.getElementsByTag("img").eq(0).attr("data-lazy-img");
                 String price = el.getElementsByClass("p-price").eq(0).text();
-                String title = el.getElementsByClass("p-name").eq(0).text();
+                Element titleElement = el.getElementsByClass("p-name").first();
+                String title = titleElement.text();
+                String itemUrl = titleElement.getElementsByTag("a").eq(0).attr("href");
 
                 System.out.println(img+price+title);
                 Content content = new Content();
                 content.setImg(img);
                 content.setPrice(price);
+                content.setSku(sku);
+                content.setItemUrl(itemUrl);
                 content.setTitle(title);
                 goodList.add(content);
             }

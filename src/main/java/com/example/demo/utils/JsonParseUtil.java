@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class JsonParseUtil {
     // public static void main(String[] args) throws IOException {
-    //     String file_path="D:/insuranceqa_data/corpus/pool/trainnew.json";
+    //     String file_path="./data/trainnew.json";
     //     List<Question> ql=new JsonParseUtil().parseJson(file_path);
     //     // System.out.println(ql.size());
     // }

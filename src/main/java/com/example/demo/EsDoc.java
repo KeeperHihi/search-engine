@@ -1,9 +1,9 @@
 package com.example.demo;
 
+import com.example.demo.utils.StandaloneElasticsearchClientFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.Arrays;
-import org.apache.http.HttpHost;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
@@ -15,7 +15,6 @@ import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.action.update.UpdateResponse;
 import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.xcontent.XContentType;
 
@@ -23,8 +22,7 @@ public class EsDoc {
 
     public static void main(String[] args) throws IOException {
         // 创建客户端对象
-        RestHighLevelClient client =
-            new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
+        RestHighLevelClient client = StandaloneElasticsearchClientFactory.createClient();
         createDoc(client);
         bulkCreateDoc(client);
         //        bulkDeleteDoc(client);
@@ -37,8 +35,7 @@ public class EsDoc {
     public static String searchDoc() throws IOException {
         String str;
         // 创建客户端对象
-        RestHighLevelClient client =
-            new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
+        RestHighLevelClient client = StandaloneElasticsearchClientFactory.createClient();
 
         str = getDoc(client);
         // 关闭客户端连接

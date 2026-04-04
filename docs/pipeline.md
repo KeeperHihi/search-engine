@@ -56,15 +56,17 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 ### 3.3 Elasticsearch
 
-项目代码里把 Elasticsearch 客户端写死到了：
+项目现在通过 `application.properties` 配置 Elasticsearch 连接：
 
-```java
-new HttpHost("127.0.0.1", 9200, "http")
+```properties
+search.elasticsearch.host=127.0.0.1
+search.elasticsearch.port=9200
+search.elasticsearch.scheme=http
 ```
 
 也就是说：
 
-- Elasticsearch 需要运行在本机 `127.0.0.1:9200`
+- 默认 Elasticsearch 需要运行在本机 `127.0.0.1:9200`
 - 如果 ES 没开，应用本身通常还能启动
 - 但一旦访问搜索接口，调用 ES 时就会报错
 
@@ -254,9 +256,9 @@ Spring 会把 `config` 包里的配置类加载进来。
 
 作用：
 
-- 前端页面即使用绝对地址如 `http://localhost:8080/query` 发请求，也不会被浏览器跨域策略拦掉
+- 即使未来前端单独部署，也能通过全局 CORS 配置放行跨域请求
 
-虽然当前前后端实际上就在同一个服务里，这个配置不是必须的，但作者保留了它。
+当前主页面已经改成使用相对路径如 `/query`、`/queryse` 发请求，所以在同源部署下并不依赖这个配置。
 
 #### 7.3.3 `MyWebMvcConfig`
 
@@ -697,10 +699,15 @@ GET /parse/{keyword}
 
 ### 13.2 问答数据导入
 
-`ContentService.writeQAContent()` 会从硬编码路径读取：
+`ContentService.writeQAContent()` 现在从配置文件读取问答数据路径：
 
-- `D:/insuranceqa_data/corpus/pool/trainnew.json`
-- `D:/insuranceqa_data/corpus/pool/answersnew.json`
+- `search.data.question-file-path`
+- `search.data.answer-file-path`
+
+默认值是：
+
+- `./data/trainnew.json`
+- `./data/answersnew.json`
 
 然后写入：
 
@@ -842,7 +849,7 @@ public String detail() {
 
 ### 16.2 分页逻辑写法不标准
 
-当前代码：
+历史上这里的代码是：
 
 ```java
 sourceBuilder.from(pageNo).size(pageSize);
@@ -856,22 +863,29 @@ sourceBuilder.from(pageNo).size(pageSize);
 from = (pageNo - 1) * pageSize
 ```
 
-现在这份代码里：
+现在已经改成：
 
-- 传 `pageNo=1` 实际从第 1 条开始，不是从第 0 条开始
-- 所以分页语义并不严格正确
+```java
+sourceBuilder.from((pageNo - 1) * pageSize).size(pageSize);
+```
+
+也就是说：
+
+- `pageNo=1` 会从第 0 条开始
+- `pageNo=2` 会从第 `pageSize` 条开始
+- 分页语义已经与 Elasticsearch 的 `from/size` 保持一致
 
 ### 16.3 硬编码路径很多
 
-例如：
+历史上这里的问题主要是：
 
-- `D:/insuranceqa_data/...`
-- `./data/jddata.json`
+- 代码里直接写死数据文件路径
+- 页面里直接写死 `localhost:8080`
 
-这些路径都不适合长期维护，后面最好改成：
+现在已经收口为两种方式：
 
-- 配置文件读取
-- 相对路径
+- 数据文件路径走 `application.properties`
+- 页面请求走相对路径，如 `/query`、`/queryse`
 - 环境变量
 
 ### 16.4 问答详情路由参数命名混乱

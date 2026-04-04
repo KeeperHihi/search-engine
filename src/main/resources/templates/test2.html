@@ -133,7 +133,7 @@
         var keyword = this.keyword;
         console.info(keyword)
         keyword="java"
-        axios.get("localhost:8080/search/"+keyword+"/1/10").then(res=>{
+        axios.get("/search/"+keyword+"/1/10").then(res=>{
           //console.log(res.data)
           alert(res.data)
           this.results = res.data;

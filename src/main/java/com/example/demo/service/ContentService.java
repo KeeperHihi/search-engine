@@ -5,13 +5,16 @@ import com.example.demo.constants.EsIndexNames;
 import com.example.demo.pojo.Answer;
 import com.example.demo.pojo.Content;
 import com.example.demo.pojo.Question;
+import com.example.demo.utils.ContentDocumentIdUtil;
 import com.example.demo.utils.HtmlParseUtil;
 import com.example.demo.utils.JsonParseUtil;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -29,6 +32,7 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -39,19 +43,41 @@ public class ContentService {
     @Qualifier("restHighLevelClient")
     private RestHighLevelClient client;
 
+    @Autowired private HtmlParseUtil htmlParseUtil;
+
+    @Autowired private JsonParseUtil jsonParseUtil;
+
+    @Value("${search.data.question-file-path}")
+    private String questionFilePath;
+
+    @Value("${search.data.answer-file-path}")
+    private String answerFilePath;
+
     // 1、解析数据放到 es 中
     public boolean parseContent(String keyword) throws IOException {
-        List<Content> contents = new HtmlParseUtil().parseJD(keyword);
+        List<Content> contents = htmlParseUtil.parseJD(keyword);
 
         // 把查询的数据放入 es 中
         BulkRequest request = new BulkRequest();
         request.timeout("2m");
+        Set<String> processedDocumentIds = new HashSet<String>();
 
         for (int i = 0; i < contents.size(); i++) {
+            Content content = contents.get(i);
+            String documentId = ContentDocumentIdUtil.buildDocumentId(content);
+            if (!processedDocumentIds.add(documentId)) {
+                // 同一批次里出现重复商品时直接跳过，避免一次 bulk 内重复覆盖。
+                continue;
+            }
             request.add(
-                // 京东商品索引统一写入 jddata，避免抓取与查询使用不同索引。
+                // 使用稳定文档 ID 保证重复抓取、重复导入时是幂等写入而不是插入重复文档。
                 new IndexRequest(EsIndexNames.JD_DATA)
-                    .source(JSON.toJSONString(contents.get(i)), XContentType.JSON));
+                    .id(documentId)
+                    .source(JSON.toJSONString(content), XContentType.JSON));
+        }
+
+        if (request.numberOfActions() == 0) {
+            return true;
         }
 
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
@@ -61,22 +87,16 @@ public class ContentService {
     // 2、获取这些数据实现基本的搜索功能
     public List<Map<String, Object>> searchPage(String keyword, int pageNo, int pageSize)
             throws IOException {
-        // keyword="机器学习";
-        // keyword=keyword.getBytes("UTF-8").toString();
-        if (pageNo <= 1) {
-            pageNo = 1;
-        }
-        if (pageSize <= 1) {
-            pageSize = 1;
-        }
+        pageNo = normalizePageNo(pageNo);
+        pageSize = normalizePageSize(pageSize);
 
         // 商品搜索只查询统一后的 jddata 索引。
         SearchRequest searchRequest = new SearchRequest(EsIndexNames.JD_DATA);
 
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
-        // 分页
-        sourceBuilder.from(pageNo).size(pageSize);
+        // Elasticsearch 的 from 是偏移量，不是页码。
+        sourceBuilder.from(buildFrom(pageNo, pageSize)).size(pageSize);
 
         // 精准匹配
         // TermQueryBuilder termQuery = QueryBuilders.termQuery("title", keyword);
@@ -90,31 +110,20 @@ public class ContentService {
         searchRequest.source(sourceBuilder);
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
 
-        // 解析结果
-        List<Map<String, Object>> list = new ArrayList<>();
-        for (SearchHit documentFields : searchResponse.getHits().getHits()) {
-            list.add(documentFields.getSourceAsMap());
-        }
-        return list;
+        return extractUniqueGoods(searchResponse);
     }
 
     public List<Map<String, Object>> searchQA(String keyword, int pageNo, int pageSize)
             throws IOException {
-        // keyword="机器学习";
-        // keyword=keyword.getBytes("UTF-8").toString();
-        if (pageNo <= 1) {
-            pageNo = 1;
-        }
-        if (pageSize <= 1) {
-            pageSize = 1;
-        }
+        pageNo = normalizePageNo(pageNo);
+        pageSize = normalizePageSize(pageSize);
 
         // 条件搜索
         SearchRequest searchRequest = new SearchRequest(EsIndexNames.INSURANCE_QUESTION);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
-        // 分页
-        sourceBuilder.from(pageNo).size(pageSize);
+        // Elasticsearch 的 from 是偏移量，不是页码。
+        sourceBuilder.from(buildFrom(pageNo, pageSize)).size(pageSize);
 
         // // 精准匹配 --- 不调整排序算法
         // TermQueryBuilder termQuery = QueryBuilders.termQuery("qzh", keyword);
@@ -286,8 +295,7 @@ public class ContentService {
     public boolean writeQAContent() throws IOException {
 
         // write quesitons into ES
-        String file_path = "./data/trainnew.json";
-        List<Question> questionList = new JsonParseUtil().parseJson(file_path);
+        List<Question> questionList = jsonParseUtil.parseJson(questionFilePath);
 
         // 把查询的数据放入 es 中
         BulkRequest request = new BulkRequest();
@@ -301,8 +309,7 @@ public class ContentService {
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
 
         // write answers into ES
-        file_path = "./data/answersnew.json";
-        List<Answer> answerList = new JsonParseUtil().parseAnJson(file_path);
+        List<Answer> answerList = jsonParseUtil.parseAnJson(answerFilePath);
 
         // 把查询的数据放入 es 中
         request = new BulkRequest();
@@ -316,5 +323,31 @@ public class ContentService {
         bulk = client.bulk(request, RequestOptions.DEFAULT);
 
         return !bulk.hasFailures();
+    }
+
+    private int normalizePageNo(int pageNo) {
+        return pageNo < 1 ? 1 : pageNo;
+    }
+
+    private int normalizePageSize(int pageSize) {
+        return pageSize < 1 ? 20 : pageSize;
+    }
+
+    private int buildFrom(int pageNo, int pageSize) {
+        return (pageNo - 1) * pageSize;
+    }
+
+    private List<Map<String, Object>> extractUniqueGoods(SearchResponse searchResponse) {
+        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
+        Set<String> documentIds = new HashSet<String>();
+
+        for (SearchHit documentFields : searchResponse.getHits().getHits()) {
+            Map<String, Object> sourceMap = documentFields.getSourceAsMap();
+            String documentId = ContentDocumentIdUtil.buildDocumentId(sourceMap);
+            if (documentIds.add(documentId)) {
+                list.add(sourceMap);
+            }
+        }
+        return list;
     }
 }
