@@ -80,22 +80,22 @@ public class MyWebMvcConfig extends WebMvcConfigurationSupport { //  implements 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         registry
-                .addResourceHandler("/**")
-                // .addResourceLocations("classpath:/resources/")
-                .addResourceLocations("classpath:/static/")
-                .addResourceLocations("classpath:/public/");
+            .addResourceHandler("/**")
+            // .addResourceLocations("classpath:/resources/")
+            .addResourceLocations("classpath:/static/")
+            .addResourceLocations("classpath:/public/");
 
         registry.addResourceHandler("/static/**").addResourceLocations("classpath:/static/");
         // SAVEPATH就是上面的basePath，当请求Url包含static/files/时，就会以文件路径来访问basePath下面的文件
         registry.addResourceHandler("static/files/**").addResourceLocations("file:" + basePath);
 
         registry
-                .addResourceHandler("swagger-ui.html")
-                .addResourceLocations("classpath:/META-INF/resources/");
+            .addResourceHandler("swagger-ui.html")
+            .addResourceLocations("classpath:/META-INF/resources/");
 
         registry
-                .addResourceHandler("/webjars/**")
-                .addResourceLocations("classpath:/META-INF/resources/webjars/");
+            .addResourceHandler("/webjars/**")
+            .addResourceLocations("classpath:/META-INF/resources/webjars/");
 
         super.addResourceHandlers(registry);
     }

@@ -24,7 +24,7 @@ public class EsDoc {
     public static void main(String[] args) throws IOException {
         // 创建客户端对象
         RestHighLevelClient client =
-                new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
+            new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
         createDoc(client);
         bulkCreateDoc(client);
         //        bulkDeleteDoc(client);
@@ -38,7 +38,7 @@ public class EsDoc {
         String str;
         // 创建客户端对象
         RestHighLevelClient client =
-                new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
+            new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
 
         str = getDoc(client);
         // 关闭客户端连接
@@ -112,11 +112,11 @@ public class EsDoc {
         // 创建批量新增请求对象
         BulkRequest request = new BulkRequest();
         request.add(
-                new IndexRequest().index("user").id("1001").source(XContentType.JSON, "name", "zhangsan"));
+            new IndexRequest().index("user").id("1001").source(XContentType.JSON, "name", "zhangsan"));
         request.add(
-                new IndexRequest().index("user").id("1002").source(XContentType.JSON, "name", "lisi"));
+            new IndexRequest().index("user").id("1002").source(XContentType.JSON, "name", "lisi"));
         request.add(
-                new IndexRequest().index("user").id("1003").source(XContentType.JSON, "name", "wangwu"));
+            new IndexRequest().index("user").id("1003").source(XContentType.JSON, "name", "wangwu"));
         // 客户端发送请求，获取响应对象
         BulkResponse responses = client.bulk(request, RequestOptions.DEFAULT);
         // 打印结果信息

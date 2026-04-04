@@ -42,7 +42,7 @@ public class EsJDDoc {
     public static void main(String[] args) throws IOException {
         // 创建客户端对象
         RestHighLevelClient client =
-                new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
+            new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
         createDoc(client);
         //        bulkCreateDoc(client);
         String str = getDoc(client);
@@ -89,8 +89,8 @@ public class EsJDDoc {
 
         for (int i = 0; i < goodsList.size(); i++) {
             request.add(
-                    new IndexRequest("jddata")
-                            .source(com.alibaba.fastjson.JSON.toJSONString(goodsList.get(i)), XContentType.JSON));
+                new IndexRequest("jddata")
+                    .source(com.alibaba.fastjson.JSON.toJSONString(goodsList.get(i)), XContentType.JSON));
         }
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
 
@@ -211,11 +211,11 @@ public class EsJDDoc {
         // 创建批量新增请求对象
         BulkRequest request = new BulkRequest();
         request.add(
-                new IndexRequest().index("user").id("1001").source(XContentType.JSON, "name", "zhangsan"));
+            new IndexRequest().index("user").id("1001").source(XContentType.JSON, "name", "zhangsan"));
         request.add(
-                new IndexRequest().index("user").id("1002").source(XContentType.JSON, "name", "lisi"));
+            new IndexRequest().index("user").id("1002").source(XContentType.JSON, "name", "lisi"));
         request.add(
-                new IndexRequest().index("user").id("1003").source(XContentType.JSON, "name", "wangwu"));
+            new IndexRequest().index("user").id("1003").source(XContentType.JSON, "name", "wangwu"));
         // 客户端发送请求，获取响应对象
         BulkResponse responses = client.bulk(request, RequestOptions.DEFAULT);
         // 打印结果信息

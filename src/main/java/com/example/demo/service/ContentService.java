@@ -48,8 +48,8 @@ public class ContentService {
 
         for (int i = 0; i < contents.size(); i++) {
             request.add(
-                    new IndexRequest("jd_goods")
-                            .source(JSON.toJSONString(contents.get(i)), XContentType.JSON));
+                new IndexRequest("jd_goods")
+                    .source(JSON.toJSONString(contents.get(i)), XContentType.JSON));
         }
 
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
@@ -178,9 +178,9 @@ public class ContentService {
             }
             MatchQueryBuilder matchQuery2 = QueryBuilders.matchQuery("qzh", keyword_left);
             String scoreScript =
-                    "int weight=10;\n"
-                            + "def random= randomScore(params.uuidHash);\n"
-                            + "return weight*random";
+                "int weight=10;\n"
+                    + "def random= randomScore(params.uuidHash);\n"
+                    + "return weight*random";
             Map paraMap = new HashMap();
 
             int randint = (int) (Math.random() * 100);
@@ -189,7 +189,7 @@ public class ContentService {
 
             Script script = new Script(Script.DEFAULT_SCRIPT_TYPE, "painless", scoreScript, paraMap);
             ScriptScoreQueryBuilder scriptScoreQueryBuilder =
-                    QueryBuilders.scriptScoreQuery(matchQuery2, script);
+                QueryBuilders.scriptScoreQuery(matchQuery2, script);
             BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
 
             boolQueryBuilder.should(matchQuery1);
@@ -294,8 +294,8 @@ public class ContentService {
 
         for (int i = 0; i < questionList.size(); i++) {
             request.add(
-                    new IndexRequest("insurance_question")
-                            .source(JSON.toJSONString(questionList.get(i)), XContentType.JSON));
+                new IndexRequest("insurance_question")
+                    .source(JSON.toJSONString(questionList.get(i)), XContentType.JSON));
         }
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
 
@@ -309,8 +309,8 @@ public class ContentService {
 
         for (int i = 0; i < answerList.size(); i++) {
             request.add(
-                    new IndexRequest("insurance_answer")
-                            .source(JSON.toJSONString(answerList.get(i)), XContentType.JSON));
+                new IndexRequest("insurance_answer")
+                    .source(JSON.toJSONString(answerList.get(i)), XContentType.JSON));
         }
         bulk = client.bulk(request, RequestOptions.DEFAULT);
 
