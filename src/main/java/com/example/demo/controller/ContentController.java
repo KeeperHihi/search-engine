@@ -47,6 +47,12 @@ public class ContentController {
         return contentService.writeQAContent();
     }
 
+    @PostMapping("/writeJD")
+    public Boolean writeJD() throws IOException {
+        // 手动把本地商品 JSON 导入到 jddata。
+        return contentService.writeJDContent();
+    }
+
     @PostMapping("/query")
     public List<Map<String, Object>> query(String keyword, int pageNo, int pageSize)
             throws IOException {

@@ -53,35 +53,22 @@ public class ContentService {
     @Value("${search.data.answer-file-path}")
     private String answerFilePath;
 
+    @Value("${search.data.jd-file-path}")
+    private String jdFilePath;
+
     // 1、解析数据放到 es 中
     public boolean parseContent(String keyword) throws IOException {
         List<Content> contents = htmlParseUtil.parseJD(keyword);
+        return writeGoodsToEs(contents);
+    }
 
-        // 把查询的数据放入 es 中
-        BulkRequest request = new BulkRequest();
-        request.timeout("2m");
-        Set<String> processedDocumentIds = new HashSet<String>();
-
-        for (int i = 0; i < contents.size(); i++) {
-            Content content = contents.get(i);
-            String documentId = ContentDocumentIdUtil.buildDocumentId(content);
-            if (!processedDocumentIds.add(documentId)) {
-                // 同一批次里出现重复商品时直接跳过，避免一次 bulk 内重复覆盖。
-                continue;
-            }
-            request.add(
-                // 使用稳定文档 ID 保证重复抓取、重复导入时是幂等写入而不是插入重复文档。
-                new IndexRequest(EsIndexNames.JD_DATA)
-                    .id(documentId)
-                    .source(JSON.toJSONString(content), XContentType.JSON));
-        }
-
-        if (request.numberOfActions() == 0) {
-            return true;
-        }
-
-        BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
-        return !bulk.hasFailures();
+    /**
+     * 从本地商品 JSON 手动导入到 jddata。
+     * 商品文件路径来自 application.properties，便于切换不同样例文件。
+     */
+    public boolean writeJDContent() throws IOException {
+        List<Content> goodsList = jsonParseUtil.parseJDJson(jdFilePath);
+        return writeGoodsToEs(goodsList);
     }
 
     // 2、获取这些数据实现基本的搜索功能
@@ -335,6 +322,42 @@ public class ContentService {
 
     private int buildFrom(int pageNo, int pageSize) {
         return (pageNo - 1) * pageSize;
+    }
+
+    private boolean writeGoodsToEs(List<Content> contents) throws IOException {
+        BulkRequest request = buildGoodsBulkRequest(contents);
+        if (request.numberOfActions() == 0) {
+            return true;
+        }
+
+        BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
+        return !bulk.hasFailures();
+    }
+
+    private BulkRequest buildGoodsBulkRequest(List<Content> contents) {
+        BulkRequest request = new BulkRequest();
+        request.timeout("2m");
+
+        if (contents == null || contents.isEmpty()) {
+            return request;
+        }
+
+        Set<String> processedDocumentIds = new HashSet<String>();
+        for (int i = 0; i < contents.size(); i++) {
+            Content content = contents.get(i);
+            String documentId = ContentDocumentIdUtil.buildDocumentId(content);
+            if (!processedDocumentIds.add(documentId)) {
+                // 同一批次里出现重复商品时直接跳过，避免一次 bulk 内重复覆盖。
+                continue;
+            }
+
+            request.add(
+                // 使用稳定文档 ID 保证重复抓取、重复导入时是幂等写入而不是插入重复文档。
+                new IndexRequest(EsIndexNames.JD_DATA)
+                    .id(documentId)
+                    .source(JSON.toJSONString(content), XContentType.JSON));
+        }
+        return request;
     }
 
     private List<Map<String, Object>> extractUniqueGoods(SearchResponse searchResponse) {
