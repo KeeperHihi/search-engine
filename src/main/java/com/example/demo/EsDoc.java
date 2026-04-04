@@ -1,16 +1,9 @@
 package com.example.demo;
 
-import com.example.demo.User;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.Arrays;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.elasticsearch.action.admin.indices.alias.Alias;
-import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
-import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
-import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
-import org.elasticsearch.action.admin.indices.get.GetIndexRequest;
-import org.elasticsearch.action.admin.indices.get.GetIndexResponse;
+import org.apache.http.HttpHost;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
@@ -19,28 +12,23 @@ import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
-import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.action.update.UpdateResponse;
 import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.xcontent.XContentType;
-import org.apache.http.HttpHost;
 import org.elasticsearch.client.RestClient;
-
+import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.common.xcontent.XContentType;
 
 public class EsDoc {
 
     public static void main(String[] args) throws IOException {
         // 创建客户端对象
-        RestHighLevelClient client = new RestHighLevelClient(
-                RestClient.builder(new HttpHost("127.0.0.1", 9200, "http"))
-        );
+        RestHighLevelClient client =
+                new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
         createDoc(client);
         bulkCreateDoc(client);
-//        bulkDeleteDoc(client);
-        String str=getDoc(client);
+        //        bulkDeleteDoc(client);
+        String str = getDoc(client);
 
         // 关闭客户端连接
         client.close();
@@ -49,11 +37,10 @@ public class EsDoc {
     public static String searchDoc() throws IOException {
         String str;
         // 创建客户端对象
-        RestHighLevelClient client = new RestHighLevelClient(
-                RestClient.builder(new HttpHost("127.0.0.1", 9200, "http"))
-        );
+        RestHighLevelClient client =
+                new RestHighLevelClient(RestClient.builder(new HttpHost("127.0.0.1", 9200, "http")));
 
-        str=getDoc(client);
+        str = getDoc(client);
         // 关闭客户端连接
         client.close();
         return str;
@@ -124,9 +111,12 @@ public class EsDoc {
     public static void bulkCreateDoc(RestHighLevelClient client) throws IOException {
         // 创建批量新增请求对象
         BulkRequest request = new BulkRequest();
-        request.add(new IndexRequest().index("user").id("1001").source(XContentType.JSON, "name", "zhangsan"));
-        request.add(new IndexRequest().index("user").id("1002").source(XContentType.JSON, "name", "lisi"));
-        request.add(new IndexRequest().index("user").id("1003").source(XContentType.JSON, "name", "wangwu"));
+        request.add(
+                new IndexRequest().index("user").id("1001").source(XContentType.JSON, "name", "zhangsan"));
+        request.add(
+                new IndexRequest().index("user").id("1002").source(XContentType.JSON, "name", "lisi"));
+        request.add(
+                new IndexRequest().index("user").id("1003").source(XContentType.JSON, "name", "wangwu"));
         // 客户端发送请求，获取响应对象
         BulkResponse responses = client.bulk(request, RequestOptions.DEFAULT);
         // 打印结果信息
@@ -146,6 +136,5 @@ public class EsDoc {
         // 打印结果信息
         System.out.println("took: " + responses.getTook());
         System.out.println("items: " + Arrays.toString(responses.getItems()));
-
     }
 }

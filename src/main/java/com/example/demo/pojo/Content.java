@@ -1,6 +1,5 @@
 package com.example.demo.pojo;
 
-
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -12,5 +11,5 @@ public class Content {
     private String title;
     private String img;
     private String price;
-    //可以自行添加属性
+    // 可以自行添加属性
 }

@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class Question{
+public class Question {
     private String qid;
     private String qzh;
     private String qen;
@@ -16,5 +16,5 @@ public class Question{
     private String qanswers;
     private String qnegatives;
 
-    //可以自行添加属性
+    // 可以自行添加属性
 }
