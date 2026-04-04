@@ -60,7 +60,7 @@ public class EsJDDoc {
         List<Map<String, Object>> list = searchPage(client);
         jsonstr = JSON.toJSONString(list);
 
-        filePath = "/home/jin/Workspace/data/search-engine/jd/jddata.json";
+        filePath = "./data/jddata.json";
         try {
             File file = new File(filePath);
             // 创建文件
@@ -80,7 +80,7 @@ public class EsJDDoc {
     public static boolean writeJDdata(RestHighLevelClient client) throws IOException {
 
         // write quesitons into ES
-        String file_path = "/home/jin/Workspace/data/search-engine/jd/jddata.json";
+        String file_path = "./data/jddata.json";
         List<Content> goodsList = new JsonParseUtil().parseJDJson(file_path);
 
         // 把查询的数据放入 es 中

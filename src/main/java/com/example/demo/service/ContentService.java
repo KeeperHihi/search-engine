@@ -285,7 +285,7 @@ public class ContentService {
     public boolean writeQAContent() throws IOException {
 
         // write quesitons into ES
-        String file_path = "D:/insuranceqa_data/corpus/pool/trainnew.json";
+        String file_path = "./data/trainnew.json";
         List<Question> questionList = new JsonParseUtil().parseJson(file_path);
 
         // 把查询的数据放入 es 中
@@ -300,7 +300,7 @@ public class ContentService {
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
 
         // write answers into ES
-        file_path = "D:/insuranceqa_data/corpus/pool/answersnew.json";
+        file_path = "./data/answersnew.json";
         List<Answer> answerList = new JsonParseUtil().parseAnJson(file_path);
 
         // 把查询的数据放入 es 中
