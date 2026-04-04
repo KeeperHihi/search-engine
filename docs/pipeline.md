@@ -73,16 +73,14 @@ new HttpHost("127.0.0.1", 9200, "http")
 项目里的搜索依赖这些索引名：
 
 - `jddata`
-- `jd_goods`
 - `insurance_question`
 - `insurance_answer`
 
-其中最重要的是：
+其中商品搜索现在统一使用：
 
-- 商品搜索页面默认查 `jddata`
-- 抓取京东页面写入的是 `jd_goods`
+- `jddata`
 
-这两个不是同一个索引，这是项目里一个非常关键的坑，后面会详细解释。
+历史上抓取链路曾写入 `jd_goods`、页面查询读取 `jddata`，这是此前最关键的逻辑分叉；当前代码已经统一到 `jddata`。
 
 ---
 
@@ -654,24 +652,24 @@ GET /parse/{keyword}
 -> HtmlParseUtil.parseJD(keyword)
 -> Jsoup 请求京东搜索页
 -> 解析 HTML 提取商品
--> 批量写入 Elasticsearch 索引 jd_goods
+-> 批量写入 Elasticsearch 索引 jddata
 -> 返回 true/false
 ```
 
 这里要注意：
 
 - 这是后端抓取网页，不是浏览器抓
-- 成功写入的是 `jd_goods`
-- 但商品页默认搜索的是 `jddata`
+- 当前抓取结果会直接写入 `jddata`
+- 商品页 `/jdsearch` 和接口 `/query` 也查询 `jddata`
 
-所以：
+所以现在这条链路已经闭合：
 
 1. 你调用 `/parse/java` 抓到了数据。
-2. 数据进的是 `jd_goods`。
-3. 页面 `/jdsearch` 还是去 `jddata` 查。
-4. 结果可能“抓到了但页面看不到”。
+2. 数据直接进入 `jddata`。
+3. 页面 `/jdsearch` 也是去 `jddata` 查。
+4. 只要 ES 可用且查询条件命中，页面就能看到刚抓到的数据。
 
-这是当前项目里最值得优先修正的逻辑不一致。
+历史上“抓到了但页面看不到”的问题，就出在这里曾经一边写 `jd_goods`、一边查 `jddata`。
 
 ---
 
@@ -687,15 +685,15 @@ GET /parse/{keyword}
 它读的是硬编码路径：
 
 ```text
-/home/jin/Workspace/data/search-engine/jd/jddata.json
+./data/jddata.json
 ```
 
-不是仓库根目录下那个 `./jddata.json`。
+也就是仓库里的商品示例数据文件。
 
 这意味着：
 
-- 你仓库里虽然有一个 `jddata.json`
-- 但这段代码默认不会直接读它
+- 导入商品数据时默认读仓库内的 `data/jddata.json`
+- 不依赖仓库外的额外商品 JSON 路径
 
 ### 13.2 问答数据导入
 
@@ -828,14 +826,19 @@ public String detail() {
 
 这一节对你以后改功能很重要。
 
-### 16.1 商品数据索引不一致
+### 16.1 商品数据索引历史上不一致，现已统一
 
-当前商品相关逻辑分成两套：
+这部分原先分成两套：
 
 - `parseContent()` 写 `jd_goods`
 - `searchPage()` 查 `jddata`
 
-如果你后面要继续做商品搜索，最好先统一成同一个索引。
+现在已经统一成同一个索引：
+
+- `parseContent()` 写 `jddata`
+- `searchPage()` 查 `jddata`
+
+如果你后面继续扩展商品搜索，应该继续复用同一个索引常量，不要重新引入第二个商品索引。
 
 ### 16.2 分页逻辑写法不标准
 
@@ -863,7 +866,7 @@ from = (pageNo - 1) * pageSize
 例如：
 
 - `D:/insuranceqa_data/...`
-- `/home/jin/Workspace/data/search-engine/jd/jddata.json`
+- `./data/jddata.json`
 
 这些路径都不适合长期维护，后面最好改成：
 
@@ -967,19 +970,17 @@ from = (pageNo - 1) * pageSize
 
 如果你准备在这份代码上继续做功能，我建议先做下面几件事。
 
-### 第一步：统一商品索引
+### 第一步：保持商品索引单一
 
-先决定商品只用一个索引，比如统一为：
+当前商品索引已经统一为：
 
 - `jddata`
 
-然后把：
+后续新增能力时，也要继续让下面几条链路保持同一个索引：
 
 - 抓取写入
 - 搜索读取
 - JSON 导入
-
-全部改成同一个索引。
 
 ### 第二步：把硬编码路径移到配置文件
 
@@ -1048,7 +1049,7 @@ from = (pageNo - 1) * pageSize
 
 /parse/{keyword}
 -> HtmlParseUtil.parseJD()
--> ES: jd_goods
+-> ES: jddata
 ```
 
 ---

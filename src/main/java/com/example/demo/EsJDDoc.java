@@ -1,6 +1,7 @@
 package com.example.demo;
 
 import com.alibaba.fastjson2.JSON;
+import com.example.demo.constants.EsIndexNames;
 import com.example.demo.pojo.Content;
 import com.example.demo.utils.JsonParseUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -89,7 +90,7 @@ public class EsJDDoc {
 
         for (int i = 0; i < goodsList.size(); i++) {
             request.add(
-                new IndexRequest("jddata")
+                new IndexRequest(EsIndexNames.JD_DATA)
                     .source(com.alibaba.fastjson.JSON.toJSONString(goodsList.get(i)), XContentType.JSON));
         }
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
@@ -108,7 +109,8 @@ public class EsJDDoc {
         int pageSize = 332;
 
         // 条件搜索
-        SearchRequest searchRequest = new SearchRequest("jd_goods");
+        // 商品旧索引已经废弃，辅助工具也统一只读当前商品索引。
+        SearchRequest searchRequest = new SearchRequest(EsIndexNames.JD_DATA);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
         // 分页
@@ -133,7 +135,7 @@ public class EsJDDoc {
             sourceBuilder.query(matchQuery);
             sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
             // 执行搜索
-            SearchRequest source = searchRequest.source(sourceBuilder);
+            searchRequest.source(sourceBuilder);
             SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
             // 解析结果
 

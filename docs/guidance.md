@@ -558,7 +558,7 @@ GET /parse/{keyword}
 `EsJDDoc.writeJDdata()` 会从固定文件路径读取：
 
 ```text
-/home/jin/Workspace/data/search-engine/jd/jddata.json
+./data/jddata.json
 ```
 
 然后写入 ES 索引：
@@ -567,21 +567,19 @@ GET /parse/{keyword}
 jddata
 ```
 
-这里要特别注意：
+这里的核心点是：
 
-- `parseContent()` 把抓到的数据写进 `jd_goods`
-- `searchPage()` 查询的却是 `jddata`
+- 当前代码里，`parseContent()` 和 `searchPage()` 都统一使用 `jddata`
+- `EsJDDoc.writeJDdata()` 也会把本地 JSON 导入到 `jddata`
 
-这说明当前代码里“抓取商品”和“页面搜索商品”并不是一条完全闭合的链路。
+也就是说，商品抓取、商品搜索、商品离线导入这三条链路现在已经使用同一个索引。
 
-换句话说：
+历史上这里曾经出现过：
 
-1. 你调用 `/parse/{keyword}` 抓到了数据。
-2. 这些数据被写进了 `jd_goods`。
-3. 但页面 `/jdsearch` 默认查的是 `jddata`。
-4. 所以你刚抓到的新数据，不一定会直接出现在页面里。
+1. `/parse/{keyword}` 写入 `jd_goods`
+2. `/query` 查询 `jddata`
 
-这是一处非常关键的历史遗留问题。
+这会导致“抓到了数据，但页面搜不到”的错觉。当前代码已经修正为统一使用 `jddata`。
 
 ### 7.2 问答数据来源：本地 JSON
 
@@ -970,14 +968,14 @@ public String index(){
 
 同时项目里还有一个 `static/index.html`，它比 `templates/index.html` 更完整，但由于有 `HelloController` 显式接管了 `/`，所以它并不是当前主入口。
 
-### 13.2 商品抓取写入的索引和页面查询的索引不一致
+### 13.2 商品索引历史上曾不一致，当前已统一
 
-这是本项目最关键的业务坑：
+这个项目原先最关键的业务坑是：
 
 - `/parse/{keyword}` -> 写入 `jd_goods`
 - `/query` -> 查询 `jddata`
 
-这两个索引名不一致，会直接导致你误以为“我已经导入数据了，为什么页面搜不到”。
+现在这两条链路都已经统一到了 `jddata`，但理解这个历史问题依然有价值，因为它解释了为什么仓库里会同时出现过两个商品索引名。
 
 ### 13.3 `pageNo` 不是标准分页写法
 
@@ -1199,7 +1197,6 @@ JsonParseUtil
 数据存储：
 Elasticsearch
   jddata
-  jd_goods
   insurance_question
   insurance_answer
 ```

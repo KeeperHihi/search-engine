@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import com.alibaba.fastjson.JSON;
+import com.example.demo.constants.EsIndexNames;
 import com.example.demo.pojo.Answer;
 import com.example.demo.pojo.Content;
 import com.example.demo.pojo.Question;
@@ -48,7 +49,8 @@ public class ContentService {
 
         for (int i = 0; i < contents.size(); i++) {
             request.add(
-                new IndexRequest("jd_goods")
+                // 京东商品索引统一写入 jddata，避免抓取与查询使用不同索引。
+                new IndexRequest(EsIndexNames.JD_DATA)
                     .source(JSON.toJSONString(contents.get(i)), XContentType.JSON));
         }
 
@@ -68,9 +70,8 @@ public class ContentService {
             pageSize = 1;
         }
 
-        // 条件搜索
-        // SearchRequest searchRequest = new SearchRequest("jd_goods");
-        SearchRequest searchRequest = new SearchRequest("jddata");
+        // 商品搜索只查询统一后的 jddata 索引。
+        SearchRequest searchRequest = new SearchRequest(EsIndexNames.JD_DATA);
 
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
@@ -86,7 +87,7 @@ public class ContentService {
         sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
 
         // 执行搜索
-        SearchRequest source = searchRequest.source(sourceBuilder);
+        searchRequest.source(sourceBuilder);
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
 
         // 解析结果
@@ -109,7 +110,7 @@ public class ContentService {
         }
 
         // 条件搜索
-        SearchRequest searchRequest = new SearchRequest("insurance_question");
+        SearchRequest searchRequest = new SearchRequest(EsIndexNames.INSURANCE_QUESTION);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
         // 分页
@@ -199,7 +200,7 @@ public class ContentService {
 
         sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
         // 执行搜索
-        SearchRequest source = searchRequest.source(sourceBuilder);
+        searchRequest.source(sourceBuilder);
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
         // 解析结果
 
@@ -212,7 +213,7 @@ public class ContentService {
 
     public List<Map<String, Object>> searchAnswer(String qid) throws IOException {
         // 条件搜索insurance_question
-        SearchRequest searchRequest = new SearchRequest("insurance_question");
+        SearchRequest searchRequest = new SearchRequest(EsIndexNames.INSURANCE_QUESTION);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
         // 精准匹配
@@ -223,7 +224,7 @@ public class ContentService {
         // sourceBuilder.query(matchQuery);
         sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
         // 执行搜索
-        SearchRequest source = searchRequest.source(sourceBuilder);
+        searchRequest.source(sourceBuilder);
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
         // 解析结果
 
@@ -240,7 +241,7 @@ public class ContentService {
         String aid = "";
         if (!list.isEmpty()) {
             // 条件搜索insurance_answer
-            searchRequest = new SearchRequest("insurance_answer");
+            searchRequest = new SearchRequest(EsIndexNames.INSURANCE_ANSWER);
             qdomain = (String) list.get(0).get("qdomain");
             qzh = (String) list.get(0).get("qzh");
             qen = (String) list.get(0).get("qen");
@@ -256,7 +257,7 @@ public class ContentService {
             // sourceBuilder.query(matchQuery);
             sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
             // 执行搜索
-            source = searchRequest.source(sourceBuilder);
+            searchRequest.source(sourceBuilder);
             searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
             // 解析结果
 
@@ -294,7 +295,7 @@ public class ContentService {
 
         for (int i = 0; i < questionList.size(); i++) {
             request.add(
-                new IndexRequest("insurance_question")
+                new IndexRequest(EsIndexNames.INSURANCE_QUESTION)
                     .source(JSON.toJSONString(questionList.get(i)), XContentType.JSON));
         }
         BulkResponse bulk = client.bulk(request, RequestOptions.DEFAULT);
@@ -309,7 +310,7 @@ public class ContentService {
 
         for (int i = 0; i < answerList.size(); i++) {
             request.add(
-                new IndexRequest("insurance_answer")
+                new IndexRequest(EsIndexNames.INSURANCE_ANSWER)
                     .source(JSON.toJSONString(answerList.get(i)), XContentType.JSON));
         }
         bulk = client.bulk(request, RequestOptions.DEFAULT);
