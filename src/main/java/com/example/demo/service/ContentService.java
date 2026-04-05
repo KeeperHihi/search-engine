@@ -8,6 +8,7 @@ import com.example.demo.pojo.Question;
 import com.example.demo.utils.ContentDocumentIdUtil;
 import com.example.demo.utils.HtmlParseUtil;
 import com.example.demo.utils.JsonParseUtil;
+import com.example.demo.utils.PriceTextUtil;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -261,6 +262,7 @@ public class ContentService {
 
         Set<String> processedDocumentIds = new HashSet<String>();
         for (Content content : contents) {
+            normalizeContentPrice(content);
             String documentId = ContentDocumentIdUtil.buildDocumentId(content);
             if (!processedDocumentIds.add(documentId)) {
                 // 同一批次里出现重复商品时直接跳过，避免一次 bulk 内重复覆盖。
@@ -294,11 +296,33 @@ public class ContentService {
 
         for (SearchHit searchHit : searchResponse.getHits().getHits()) {
             Map<String, Object> sourceMap = searchHit.getSourceAsMap();
+            normalizeGoodsSourcePrice(sourceMap);
             String documentId = ContentDocumentIdUtil.buildDocumentId(sourceMap);
             if (documentIds.add(documentId)) {
                 goodsList.add(sourceMap);
             }
         }
         return goodsList;
+    }
+
+    private void normalizeContentPrice(Content content) {
+        if (content == null) {
+            return;
+        }
+
+        content.setPrice(PriceTextUtil.normalizeDisplayPrice(content.getPrice()));
+    }
+
+    private void normalizeGoodsSourcePrice(Map<String, Object> sourceMap) {
+        if (sourceMap == null) {
+            return;
+        }
+
+        sourceMap.put("price", PriceTextUtil.normalizeDisplayPrice(readMapValue(sourceMap, "price")));
+    }
+
+    private String readMapValue(Map<String, Object> sourceMap, String fieldName) {
+        Object value = sourceMap.get(fieldName);
+        return value == null ? "" : String.valueOf(value);
     }
 }

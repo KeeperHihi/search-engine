@@ -24,7 +24,14 @@ public class JsonParseUtil {
     }
 
     public List<Content> parseJDJson(String jsonFilePath) throws IOException {
-        return parseArray(jsonFilePath, Content.class);
+        List<Content> contents = parseArray(jsonFilePath, Content.class);
+        for (Content content : contents) {
+            if (content != null) {
+                // 样例 JSON 里存在把多个金额写进一个 price 字段的历史数据，这里统一清洗。
+                content.setPrice(PriceTextUtil.normalizeDisplayPrice(content.getPrice()));
+            }
+        }
+        return contents;
     }
 
     private <T> List<T> parseArray(String jsonFilePath, Class<T> targetClass) throws IOException {

@@ -39,7 +39,7 @@ public class HtmlParseUtil {
             Content content = new Content();
             content.setSku(element.attr("data-sku"));
             content.setImg(resolveImage(element));
-            content.setPrice(element.getElementsByClass("p-price").eq(0).text());
+            content.setPrice(resolvePrice(element));
             content.setTitle(titleElement.text());
             content.setItemUrl(titleElement.getElementsByTag("a").eq(0).attr("href"));
             goods.add(content);
@@ -56,5 +56,14 @@ public class HtmlParseUtil {
         Element imageElement = imageElements.get(0);
         String lazyImage = imageElement.attr("data-lazy-img");
         return lazyImage.isEmpty() ? imageElement.attr("src") : lazyImage;
+    }
+
+    private String resolvePrice(Element element) {
+        Element priceElement = element.getElementsByClass("p-price").first();
+        if (priceElement == null) {
+            return "";
+        }
+
+        return PriceTextUtil.normalizeDisplayPrice(priceElement.text());
     }
 }
