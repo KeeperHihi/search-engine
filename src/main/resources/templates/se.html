@@ -22,7 +22,6 @@
 
           <div class="header-extra">
 
-            <!--搜索                        <input v-model.trim="keyword" id="keyword" @keyup="getAddress">-->
             <div id="mallSearch">
 
               <form name="searchTop" >
@@ -99,26 +98,17 @@
 </div>
 </body>
 
-<script src="./js/vue.min.js"></script>
-<script src="./js/axios.min.js"></script>
+<script th:src="@{/js/vue.min.js}"></script>
+<script th:src="@{/js/axios.min.js}"></script>
 <script type="text/javascript">
   var vm = new Vue({
     el:'#app',
     data:{
-      keyword:"",  //搜索关键字
-      flag1:false,
-      flag2:true,
-      results:[]  //搜索结果
-    },
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8'
+      keyword:"",
+      results:[]
     },
     methods:{
       searchPage(){
-        this.flag1=true;
-        this.flag2=false;
-        var keyword = this.keyword.toString();
-        console.info(keyword);
         axios.request({
             method: "POST",
             url:"/queryse",
@@ -132,7 +122,7 @@
         })
       },
       searchId(qid){
-        window.location.href = "/searchAn/"+qid;
+        window.location.href = "/answer/" + qid;
       }
 
     }

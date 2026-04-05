@@ -21,7 +21,6 @@
 
           <div class="header-extra">
 
-            <!--搜索                        <input v-model.trim="keyword" id="keyword" @keyup="getAddress">-->
             <div id="mallSearch" class="mall-search">
               <form name="searchTop" class="mallSearch-form clearfix">
                 <fieldset>
@@ -118,22 +117,17 @@
 </div>
 </body>
 
-<script src="./js/vue.min.js"></script>
-<script src="./js/axios.min.js"></script>
+<script th:src="@{/js/vue.min.js}"></script>
+<script th:src="@{/js/axios.min.js}"></script>
 <script type="text/javascript">
   var vm = new Vue({
     el:'#app',
     data:{
-      keyword:"",  //搜索关键字
-      results:[]  //搜索结果
-    },
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8'
+      keyword:"",
+      results:[]
     },
     methods:{
       searchPage(){
-        var keyword = this.keyword.toString();
-        console.info(keyword);
         axios.request({
             method: "POST",
             url:"/query",

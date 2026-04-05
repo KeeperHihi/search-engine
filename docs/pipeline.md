@@ -153,22 +153,22 @@ src/main/java/com/example/demo
 ├── service
 │   └── ContentService.java
 ├── config
-│   ├── ElasticSearchClientConfig.java
-│   ├── CorConfig.java
-│   └── MyWebMvcConfig.java
+│   └── ElasticSearchClientConfig.java
 ├── utils
+│   ├── ContentDocumentIdUtil.java
 │   ├── HtmlParseUtil.java
 │   └── JsonParseUtil.java
 ├── pojo
 │   ├── Content.java
 │   ├── Question.java
 │   └── Answer.java
-└── EsDoc.java / EsIndex.java / EsJDDoc.java
+
+说明：早期用于演示或过渡的 `CorConfig`、`MyWebMvcConfig`、`EsDoc`、`EsIndex`、
+`EsJDDoc`、`HtmlParseExample`、`User` 等类已经清理，当前代码只保留主业务链路。
 
 src/main/resources
 ├── application.properties
 ├── templates
-│   ├── index.html
 │   ├── jdsearch.html
 │   ├── se.html
 │   └── answer.html
@@ -329,10 +329,10 @@ Spring 会把 `config` 包里的配置类加载进来。
 
 它主要负责这些路由：
 
-- `/` 和 `/index` -> `index.html`
+- `/` 和 `/index` -> 重定向到 `/jdsearch`
 - `/jdsearch` -> `jdsearch.html`
 - `/contentse` -> `se.html`
-- `/searchAn/{aid}` -> `answer.html`
+- `/answer/{qid}` -> `answer.html`
 
 也就是说，`HelloController` 更像“页面导航员”。
 
@@ -371,7 +371,7 @@ src/main/resources/templates/jdsearch.html
 它主要负责这些接口：
 
 - `GET /parse/{keyword}`：抓京东并写入 ES
-- `GET /search/{keyword}/{pageNo}/{pageSize}`：商品搜索接口
+- `POST /writeJD`：把本地商品 JSON 导入 `jddata`
 - `POST /query`：商品搜索接口，供页面调用
 - `POST /queryse`：问答搜索接口
 - `GET /writeQA`：把问答 JSON 数据写入 ES
@@ -613,14 +613,14 @@ http://localhost:8080/contentse
 在 `se.html` 里，点击某条问题会跳转：
 
 ```text
-/searchAn/{qid}
+/answer/{qid}
 ```
 
 然后流程如下：
 
 ```text
-/searchAn/{qid}
--> HelloController.parsese()
+/answer/{qid}
+-> HelloController.searchAnswer()
 -> ContentService.searchAnswer(qid)
 -> 先查 insurance_question
 -> 从 qanswers 字段里拆出 aid
@@ -679,12 +679,12 @@ GET /parse/{keyword}
 
 ### 13.1 商品数据导入
 
-`EsJDDoc.writeJDdata()` 的作用是：
+`POST /writeJD` 调用的 `ContentService.writeJDContent()` 的作用是：
 
 - 先从 JSON 文件读商品数据
 - 再批量写入 ES 的 `jddata`
 
-它读的是硬编码路径：
+它读的是配置文件里的路径：
 
 ```text
 ./data/jddata.json
@@ -714,29 +714,21 @@ GET /parse/{keyword}
 - `insurance_question`
 - `insurance_answer`
 
-这说明问答导入逻辑是按作者自己电脑的路径写的，不是一个可移植的方案。
+这说明商品和问答导入都已经改成了可配置路径，不再依赖写死在代码里的本机路径。
 
 ---
 
-## 14. 为什么根路径 `/` 看起来不像完整页面
+## 14. 为什么根路径 `/` 会直接进入商品搜索页
 
 因为：
 
-- `/` 返回的是 `templates/index.html`
-- 这个模板只有顶部搜索区域
-- 没有完整的结果区域和脚本逻辑
+- `/` 和 `/index` 现在都会重定向到 `/jdsearch`
+- 旧的 `templates/index.html` 和 `static/index.html` 已经清理
+- 当前根路径只保留一套实际可用的商品搜索入口
 
 而真正可用的完整商品搜索页在：
 
 - `templates/jdsearch.html`
-
-另外项目里还存在：
-
-- `src/main/resources/static/index.html`
-
-这个静态版 `index.html` 比模板版完整一些，但由于根路径已经被 `HelloController` 映射到模板版页面，所以浏览器访问 `/` 时拿到的是模板版，不是静态版。
-
-这也是一个容易让初学者困惑的点：
 
 - 同名文件不一定真的会被访问到
 - 最终访问哪个页面，要看“控制器路由”优先还是“静态资源映射”优先

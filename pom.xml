@@ -15,7 +15,6 @@
     <description>demo</description>
     <properties>
         <java.version>1.8</java.version>
-        <elasticsearch.version>7.6.1</elasticsearch.version>
     </properties>
     <dependencies>
         <dependency>
@@ -31,12 +30,6 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-thymeleaf</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.data</groupId>
-            <artifactId>spring-data-elasticsearch</artifactId>
-            <version>4.0.1.RELEASE</version>
-        </dependency>
-
         <dependency>
             <groupId>org.elasticsearch.client</groupId>
             <artifactId>elasticsearch-rest-high-level-client</artifactId>
@@ -68,21 +61,6 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
         </plugins>
-
-        <!-- 指定需要编译的资源文件路径 （包含项，以及非包含项）-->
-        <resources>
-                <resource>
-                    <directory>src/main/java</directory>
-                    <includes>
-                        <include>**/*.xml</include>
-                    </includes>
-                </resource>
-
-                <resource>
-                    <directory>src/main/resources</directory>
-                </resource>
-        </resources>
-
     </build>
 
 </project>

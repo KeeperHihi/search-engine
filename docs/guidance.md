@@ -51,28 +51,25 @@ src/main/java/com/example/demo
 ├── service
 │   └── ContentService.java           # 核心业务逻辑
 ├── config
-│   ├── ElasticSearchClientConfig.java# ES 客户端配置
-│   ├── CorConfig.java                # CORS 配置
-│   └── MyWebMvcConfig.java           # MVC/静态资源配置
+│   └── ElasticSearchClientConfig.java# ES 客户端配置
 ├── utils
+│   ├── ContentDocumentIdUtil.java    # 商品稳定文档 ID 与去重
 │   ├── HtmlParseUtil.java            # 爬取京东页面
 │   └── JsonParseUtil.java            # 读取本地 JSON 数据
 ├── pojo
 │   ├── Content.java                  # 商品/搜索结果模型
 │   ├── Question.java                 # 问题模型
 │   └── Answer.java                   # 答案模型
-├── EsDoc.java / EsIndex.java / EsJDDoc.java / HtmlParseExample.java
-│                                      # 偏演示/测试性质的辅助代码
-└── User.java                         # ES 演示类使用的简单实体
+
+说明：偏演示/测试性质的 `EsDoc`、`EsIndex`、`EsJDDoc`、`HtmlParseExample`、`User`
+以及旧的 `CorConfig`、`MyWebMvcConfig` 已经从当前项目主链路中清理。
 
 src/main/resources
 ├── application.properties           # Spring Boot 配置
 ├── templates                        # Thymeleaf 模板页面
-│   ├── index.html
 │   ├── jdsearch.html
 │   ├── se.html
-│   ├── answer.html
-│   └── test*.html
+│   └── answer.html
 └── static
     ├── css
     ├── images
@@ -416,14 +413,14 @@ insurance_question
 
 ```javascript
 searchId(qid){
-  window.location.href = "/searchAn/"+qid;
+  window.location.href = "/answer/" + qid;
 }
 ```
 
 也就是说，点击问题标题后，浏览器会跳到：
 
 ```text
-/searchAn/{qid}
+/answer/{qid}
 ```
 
 ### 6.6 详情页的 Controller
@@ -431,17 +428,11 @@ searchId(qid){
 在 `HelloController.java`：
 
 ```java
-@GetMapping("/searchAn/{aid}")
-public String parsese(Model model, @PathVariable("aid") String aid) throws IOException
+@GetMapping("/answer/{qid}")
+public String searchAnswer(Model model, @PathVariable("qid") String qid) throws IOException
 ```
 
-这里有一个命名上的小混乱：
-
-1. 路由写的是 `/searchAn/{aid}`
-2. 但页面传进去的其实是 `qid`
-3. 方法参数变量名叫 `aid`
-
-实际上它收到的是“问题 id”，只是变量名没改干净。
+当前实现已经统一成“路径和参数都使用 `qid`”。
 
 ### 6.7 详情页查询逻辑
 
@@ -555,7 +546,7 @@ GET /parse/{keyword}
 
 #### 路径 B：从本地 JSON 导入
 
-`EsJDDoc.writeJDdata()` 会从固定文件路径读取：
+`POST /writeJD` 调用的 `ContentService.writeJDContent()` 会从配置文件里的商品路径读取：
 
 ```text
 ./data/jddata.json
@@ -570,7 +561,7 @@ jddata
 这里的核心点是：
 
 - 当前代码里，`parseContent()` 和 `searchPage()` 都统一使用 `jddata`
-- `EsJDDoc.writeJDdata()` 也会把本地 JSON 导入到 `jddata`
+- `writeJDContent()` 也会把本地 JSON 导入到 `jddata`
 
 也就是说，商品抓取、商品搜索、商品离线导入这三条链路现在已经使用同一个索引。
 
@@ -631,10 +622,10 @@ GET /writeQA
 
 它主要负责：
 
-- `/` -> `index.html`
+- `/` 和 `/index` -> 重定向到 `/jdsearch`
 - `/jdsearch` -> `jdsearch.html`
 - `/contentse` -> `se.html`
-- `/searchAn/{qid}` -> `answer.html`
+- `/answer/{qid}` -> `answer.html`
 
 所以它更像“页面导航控制器”。
 
@@ -647,6 +638,7 @@ GET /writeQA
 - `/query`：商品搜索
 - `/queryse`：问答搜索
 - `/parse/{keyword}`：抓取京东并写入 ES
+- `/writeJD`：导入本地商品 JSON
 - `/writeQA`：导入问答数据
 
 所以它更像“数据接口控制器”。
@@ -959,23 +951,14 @@ Service 查出来
 `HelloController` 中：
 
 ```java
-@GetMapping({"/","index"})
+@GetMapping({"/","/index"})
 public String index(){
-    return "index";
+    return "redirect:/jdsearch";
 }
 ```
 
-它返回的是 `templates/index.html`。
-
-但是这个 `templates/index.html` 只有页面壳子，没有真正初始化 Vue，也没有引入搜索逻辑对应的脚本。
-
-所以：
-
-1. 你看到首页有输入框和按钮
-2. 但它不是完整可交互的页面
-3. 真正能工作的页面反而是 `/jdsearch` 和 `/contentse`
-
-同时项目里还有一个 `static/index.html`，它比 `templates/index.html` 更完整，但由于有 `HelloController` 显式接管了 `/`，所以它并不是当前主入口。
+当前根路径不再保留单独首页，而是直接进入 `/jdsearch`。
+旧的 `templates/index.html` 和 `static/index.html` 已经清理。
 
 ### 13.2 商品索引历史上曾不一致，当前已统一
 
@@ -1028,14 +1011,14 @@ search.data.answer-file-path
 
 ```javascript
 url:"http://localhost:8080/query"
-window.location.href = "http://localhost:8080/searchAn/"+qid;
+window.location.href = "http://localhost:8080/answer/"+qid;
 ```
 
 现在已经改成：
 
 ```javascript
 url:"/query"
-window.location.href = "/searchAn/"+qid;
+window.location.href = "/answer/" + qid;
 ```
 
 ### 13.6 `searchAnswer()` 解析答案 id 的方式比较脆弱
