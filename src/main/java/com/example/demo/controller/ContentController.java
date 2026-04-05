@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.service.ContentService;
+import com.example.demo.utils.GoodsDisplayUtil;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -38,9 +39,13 @@ public class ContentController {
     public List<Map<String, Object>> query(
             @RequestParam("keyword") String keyword,
             @RequestParam("pageNo") int pageNo,
-            @RequestParam("pageSize") int pageSize)
+            @RequestParam("pageSize") int pageSize,
+            @RequestParam(value = "sortBy", defaultValue = GoodsDisplayUtil.SORT_DEFAULT)
+                    String sortBy,
+            @RequestParam(value = "priceOrder", defaultValue = GoodsDisplayUtil.ORDER_ASC)
+                    String priceOrder)
             throws IOException {
-        return contentService.searchPage(keyword, pageNo, pageSize);
+        return contentService.searchPage(keyword, pageNo, pageSize, sortBy, priceOrder);
     }
 
     @PostMapping("/queryse")

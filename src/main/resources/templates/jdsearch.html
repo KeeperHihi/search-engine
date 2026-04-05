@@ -22,26 +22,34 @@
           <div class="header-extra">
 
             <div id="mallSearch" class="mall-search">
-              <form name="searchTop" class="mallSearch-form clearfix">
+              <form name="searchTop" class="mallSearch-form clearfix" @submit.prevent="searchPage">
                 <fieldset>
-                  <legend>天猫搜索</legend>
+                  <legend>京东搜索</legend>
                   <div class="mallSearch-input clearfix">
                     <div class="s-combobox" id="s-combobox-685">
                       <div class="s-combobox-input-wrap">
-                        <input v-model="keyword" type="text" autocomplete="off" value="" id="mq"
-                               class="s-combobox-input" aria-haspopup="true">
+                        <input
+                                ref="keywordInput"
+                                v-model="keyword"
+                                type="text"
+                                autocomplete="off"
+                                value=""
+                                id="mq"
+                                class="s-combobox-input"
+                                aria-haspopup="true"
+                                placeholder="请输入商品关键词">
                       </div>
                     </div>
-                    <button @click.prevent="searchPage" type="submit" id="searchbtn">搜索</button>
+                    <button type="submit" id="searchbtn" :disabled="loading">
+                      {{ loading ? '搜索中...' : '搜索' }}
+                    </button>
                   </div>
                 </fieldset>
               </form>
               <ul class="relKeyTop">
-                <li><a>Java</a></li>
-                <li><a>Python</a></li>
-                <li><a>机器问答</a></li>
-                <li><a>信息检索</a></li>
-                <li><a>人工智能</a></li>
+                <li v-for="hotKeyword in hotKeywords" :key="hotKeyword">
+                  <a @click.prevent="fillKeyword(hotKeyword)">{{ hotKeyword }}</a>
+                </li>
               </ul>
             </div>
           </div>
@@ -73,17 +81,40 @@
 
       <!-- 排序规则 -->
       <div class="filter clearfix">
-        <a class="fSort fSort-cur">综合<i class="f-ico-arrow-d"></i></a>
-        <a class="fSort">人气<i class="f-ico-arrow-d"></i></a>
-        <a class="fSort">新品<i class="f-ico-arrow-d"></i></a>
-        <a class="fSort">销量<i class="f-ico-arrow-d"></i></a>
-        <a class="fSort">价格<i class="f-ico-triangle-mt"></i><i class="f-ico-triangle-mb"></i></a>
+        <a class="fSort" :class="{'fSort-cur': sortBy === 'default'}" @click.prevent="changeSort('default')">
+          综合<i class="f-ico-arrow-d"></i>
+        </a>
+        <a class="fSort" :class="{'fSort-cur': sortBy === 'popularity'}" @click.prevent="changeSort('popularity')">
+          人气<i class="f-ico-arrow-d"></i>
+        </a>
+        <a class="fSort" :class="{'fSort-cur': sortBy === 'newest'}" @click.prevent="changeSort('newest')">
+          新品<i class="f-ico-arrow-d"></i>
+        </a>
+        <a class="fSort" :class="{'fSort-cur': sortBy === 'sales'}" @click.prevent="changeSort('sales')">
+          销量<i class="f-ico-arrow-d"></i>
+        </a>
+        <a class="fSort" :class="{'fSort-cur': sortBy === 'price'}" @click.prevent="togglePriceSort">
+          价格
+          <i class="f-ico-triangle-mt" :class="{'sort-active': sortBy === 'price' && priceOrder === 'asc'}"></i>
+          <i class="f-ico-triangle-mb" :class="{'sort-active': sortBy === 'price' && priceOrder === 'desc'}"></i>
+        </a>
+      </div>
+
+      <div class="searchMeta" v-if="hasSearched">
+        <span v-if="searchedKeyword">
+          为您找到 <em>{{ results.length }}</em> 件与 “{{ searchedKeyword }}” 相关的商品
+        </span>
+        <span>{{ currentSortLabel }}</span>
+      </div>
+
+      <div class="searchEmpty" v-if="showEmptyState">
+        没有找到与 “{{ searchedKeyword }}” 相关的商品，试试上方推荐搜索词。
       </div>
 
       <!-- 商品详情 -->
       <div class="view grid-nosku">
 
-        <div class="product" v-for="item in results">
+        <div class="product" v-for="item in results" :key="item.sku || item.itemUrl || item.title">
           <div class="product-iWrap">
             <!--商品封面-->
             <div class="productImg-wrap">
@@ -99,14 +130,18 @@
             <p class="productTitle">
               <a v-html="item.title"></a>
             </p>
+            <p class="productTags" v-if="item.featureTags && item.featureTags.length > 0">
+              <span class="productTag" v-for="tag in item.featureTags" :key="tag">{{ tag }}</span>
+            </p>
             <!-- 店铺名 -->
             <div class="productShop">
-              <span>店铺： 实践课 </span>
+              <span>{{ item.shopName }}</span>
+              <span class="productDelivery">{{ item.deliveryText }} · {{ item.favorableRateText }}好评</span>
             </div>
             <!-- 成交信息 -->
             <p class="productStatus">
-              <span>月成交<em>999笔</em></span>
-              <span>评价 <a>3</a></span>
+              <span>月成交<em>{{ item.salesText }}</em></span>
+              <span>人气 <a>{{ item.popularityText }}</a></span>
             </p>
           </div>
         </div>
@@ -124,21 +159,93 @@
     el:'#app',
     data:{
       keyword:"",
-      results:[]
+      searchedKeyword:"",
+      results:[],
+      hotKeywords:["Java","Python","机器问答","信息检索","人工智能"],
+      sortBy:"default",
+      priceOrder:"asc",
+      loading:false,
+      hasSearched:false
+    },
+    computed:{
+      currentSortLabel(){
+        if(this.sortBy==="popularity"){
+          return "当前排序：人气优先";
+        }
+        if(this.sortBy==="newest"){
+          return "当前排序：新品优先";
+        }
+        if(this.sortBy==="sales"){
+          return "当前排序：销量优先";
+        }
+        if(this.sortBy==="price"){
+          return this.priceOrder==="desc" ? "当前排序：价格从高到低" : "当前排序：价格从低到高";
+        }
+        return "当前排序：综合推荐";
+      },
+      showEmptyState(){
+        return this.hasSearched && !this.loading && this.searchedKeyword && this.results.length===0;
+      }
     },
     methods:{
       searchPage(){
+        var trimmedKeyword = this.keyword.trim();
+        this.keyword = trimmedKeyword;
+        this.searchedKeyword = trimmedKeyword;
+        this.hasSearched = true;
+        if(!trimmedKeyword){
+          this.results = [];
+          this.focusKeywordInput();
+          return;
+        }
+
+        this.loading = true;
         axios.request({
             method: "POST",
             url:"/query",
             params:{
-              keyword:this.keyword,
+              keyword:trimmedKeyword,
               pageNo:1,
-              pageSize:20
+              pageSize:20,
+              sortBy:this.sortBy,
+              priceOrder:this.priceOrder
             }
         }).then(response=>{
           this.results=response.data;
+        }).catch(()=>{
+          this.results=[];
+        }).then(()=>{
+          this.loading=false;
         })
+      },
+      fillKeyword(hotKeyword){
+        this.keyword = hotKeyword;
+        this.focusKeywordInput();
+      },
+      changeSort(sortBy){
+        this.sortBy = sortBy;
+        if(sortBy!=="price"){
+          this.priceOrder = "asc";
+        }
+        if(this.keyword.trim()){
+          this.searchPage();
+        }
+      },
+      togglePriceSort(){
+        if(this.sortBy==="price"){
+          this.priceOrder = this.priceOrder==="asc" ? "desc" : "asc";
+        }else{
+          this.sortBy = "price";
+          this.priceOrder = "asc";
+        }
+        if(this.keyword.trim()){
+          this.searchPage();
+        }
+      },
+      focusKeywordInput(){
+        if(this.$refs.keywordInput){
+          this.$refs.keywordInput.focus();
+        }
       }
     }
   })

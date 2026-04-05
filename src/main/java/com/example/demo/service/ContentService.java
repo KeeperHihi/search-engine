@@ -6,6 +6,7 @@ import com.example.demo.pojo.Answer;
 import com.example.demo.pojo.Content;
 import com.example.demo.pojo.Question;
 import com.example.demo.utils.ContentDocumentIdUtil;
+import com.example.demo.utils.GoodsDisplayUtil;
 import com.example.demo.utils.HtmlParseUtil;
 import com.example.demo.utils.JsonParseUtil;
 import com.example.demo.utils.PriceTextUtil;
@@ -74,14 +75,27 @@ public class ContentService {
         return writeGoodsToEs(goods);
     }
 
-    public List<Map<String, Object>> searchPage(String keyword, int pageNo, int pageSize)
+    public List<Map<String, Object>> searchPage(
+            String keyword, int pageNo, int pageSize, String sortBy, String priceOrder)
             throws IOException {
+        String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        if (normalizedKeyword.isEmpty()) {
+            return new ArrayList<Map<String, Object>>();
+        }
+
         SearchRequest searchRequest = new SearchRequest(EsIndexNames.JD_DATA);
-        SearchSourceBuilder sourceBuilder = buildPagedSourceBuilder(keyword, pageNo, pageSize, "title");
+        SearchSourceBuilder sourceBuilder =
+                buildGoodsSearchSourceBuilder(normalizedKeyword, pageNo, pageSize);
 
         searchRequest.source(sourceBuilder);
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
-        return extractUniqueGoods(searchResponse);
+        List<Map<String, Object>> goodsList = extractUniqueGoods(searchResponse);
+        for (Map<String, Object> goods : goodsList) {
+            GoodsDisplayUtil.enrichGoods(goods);
+        }
+
+        GoodsDisplayUtil.sortGoods(goodsList, sortBy, priceOrder);
+        return paginateGoods(goodsList, pageNo, pageSize);
     }
 
     public List<Map<String, Object>> searchQA(String keyword, int pageNo, int pageSize)
@@ -157,10 +171,17 @@ public class ContentService {
         return questionSuccess && answerSuccess;
     }
 
-    private SearchSourceBuilder buildPagedSourceBuilder(
-            String keyword, int pageNo, int pageSize, String fieldName) {
-        SearchSourceBuilder sourceBuilder = buildPagedSourceBuilder(pageNo, pageSize);
-        sourceBuilder.query(QueryBuilders.matchQuery(fieldName, keyword));
+    private SearchSourceBuilder buildGoodsSearchSourceBuilder(
+            String keyword, int pageNo, int pageSize) {
+        int normalizedPageNo = normalizePageNo(pageNo);
+        int normalizedPageSize = normalizePageSize(pageSize);
+
+        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.from(0);
+        // 销量、人气等字段是运行时模拟出来的，所以先放大 ES 召回窗口，再在内存中排序分页。
+        sourceBuilder.size(buildGoodsFetchSize(normalizedPageNo, normalizedPageSize));
+        sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
+        sourceBuilder.query(QueryBuilders.matchQuery("title", keyword));
         return sourceBuilder;
     }
 
@@ -242,6 +263,14 @@ public class ContentService {
         return (pageNo - 1) * pageSize;
     }
 
+    private int buildGoodsFetchSize(int pageNo, int pageSize) {
+        int expectedSize = pageNo * pageSize * 4;
+        if (expectedSize < 40) {
+            return 40;
+        }
+        return Math.min(expectedSize, 200);
+    }
+
     private boolean writeGoodsToEs(List<Content> contents) throws IOException {
         BulkRequest request = buildGoodsBulkRequest(contents);
         if (request.numberOfActions() == 0) {
@@ -303,6 +332,19 @@ public class ContentService {
             }
         }
         return goodsList;
+    }
+
+    private List<Map<String, Object>> paginateGoods(
+            List<Map<String, Object>> goodsList, int pageNo, int pageSize) {
+        int normalizedPageNo = normalizePageNo(pageNo);
+        int normalizedPageSize = normalizePageSize(pageSize);
+        int fromIndex = buildFrom(normalizedPageNo, normalizedPageSize);
+        if (fromIndex >= goodsList.size()) {
+            return new ArrayList<Map<String, Object>>();
+        }
+
+        int toIndex = Math.min(fromIndex + normalizedPageSize, goodsList.size());
+        return new ArrayList<Map<String, Object>>(goodsList.subList(fromIndex, toIndex));
     }
 
     private void normalizeContentPrice(Content content) {
