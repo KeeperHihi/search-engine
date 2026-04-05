@@ -18,23 +18,16 @@
 
 ---
 
-## 2. 我已经帮你核对过的启动前提
+## 2. 启动前提
 
-你给出的 Java 8 环境切换命令是可用的，我已经在本机验证过：
+本项目不再依赖仓库内自带的 Maven Wrapper，也不再在文档里写死某个本地 `JAVA_HOME` 路径。
 
-```bash
-export JAVA_HOME=/home/jin/.jdks/corretto-1.8.0_482
-export PATH="$JAVA_HOME/bin:$PATH"
-```
+你只需要保证系统环境满足下面两点：
 
-验证结果：
+- `java -version` 能正常使用，并且版本为 `1.8`
+- `mvn -version` 能正常使用，并且 Maven 使用的也是同一套 Java 8
 
-- `java -version` 显示 `1.8.0_482`
-- `mvn -version` 显示 Maven 正在使用这套 Java 8
-- `mvn -q -DskipTests compile` 编译通过
-- `mvn -q spring-boot:run` 可以正常把 Spring Boot 启起来
-
-也就是说，这个项目在你提供的 Java 8 环境下，至少“编译”和“应用启动”这两步是通的。
+也就是说，这个项目现在默认直接使用系统安装的 `java` 和 `mvn`。
 
 ---
 
@@ -46,7 +39,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 - `java.version = 1.8`
 
-所以你本机默认的 `Java 21` 不适合直接跑这个项目。你已经准备好了 `Java 8`，这是正确的。
+所以系统默认 `java` 需要是 `Java 8`；如果系统里当前是更高版本，编译和运行前要先把系统命令切到 `Java 8`。
 
 ### 3.2 Maven
 
@@ -91,8 +84,6 @@ search.elasticsearch.scheme=http
 在项目根目录执行：
 
 ```bash
-export JAVA_HOME=/home/jin/.jdks/corretto-1.8.0_482
-export PATH="$JAVA_HOME/bin:$PATH"
 mvn -q spring-boot:run
 ```
 
