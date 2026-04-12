@@ -146,7 +146,8 @@
         this.hasSearched = true;
         this.errorMessage = "";
         if(!trimmedKeyword){
-          this.results = [];
+          this.clearSearchResults();
+          this.persistSearchState();
           this.focusKeywordInput();
           return;
         }
@@ -173,12 +174,7 @@
           };
           this.persistSearchState();
         }).catch(error=>{
-          this.results = [];
-          this.searchMeta = {
-            recalledQuestionCount:0,
-            recalledAnswerCount:0,
-            strategyLabel:this.buildStrategyLabel()
-          };
+          this.clearSearchResults();
           this.errorMessage = this.extractErrorMessage(error, "全文搜索失败，请先调用 /writeQA 导入测试数据。");
           this.persistSearchState();
         }).then(()=>{
@@ -215,6 +211,14 @@
           ? payload.topK
           : this.normalizeTopK(this.topK);
         return "策略 top-k=" + currentTopK;
+      },
+      clearSearchResults(){
+        this.results = [];
+        this.searchMeta = {
+          recalledQuestionCount:0,
+          recalledAnswerCount:0,
+          strategyLabel:this.buildStrategyLabel()
+        };
       },
       persistSearchState(){
         var searchState = {
