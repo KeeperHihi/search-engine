@@ -29,6 +29,16 @@
                   <div class="mallSearch-input clearfix">
                     <div class="s-combobox" id="s-combobox-685">
                       <div class="s-combobox-input-wrap">
+                        <div class="search-suggestion-inline" v-if="showSearchSuggestion">
+                          <span class="search-suggestion-prefix">推荐搜索：</span>
+                          <span class="search-suggestion-word-window">
+                            <transition name="search-word-up" mode="out-in">
+                              <span class="search-suggestion-word" :key="activeHotKeyword">
+                                {{ activeHotKeyword }}
+                              </span>
+                            </transition>
+                          </span>
+                        </div>
                         <input
                                 ref="keywordInput"
                                 v-model="keyword"
@@ -38,7 +48,7 @@
                                 id="mq"
                                 class="s-combobox-input"
                                 aria-haspopup="true"
-                                placeholder="请输入商品关键词">
+                                :placeholder="currentSearchPlaceholder">
                       </div>
                     </div>
                     <button type="submit" id="searchbtn" :disabled="loading">
@@ -49,7 +59,7 @@
               </form>
               <ul class="relKeyTop">
                 <li v-for="hotKeyword in hotKeywords" :key="hotKeyword">
-                  <a @click.prevent="fillKeyword(hotKeyword)">{{ hotKeyword }}</a>
+                  <a @click.prevent="searchByHotKeyword(hotKeyword)">{{ hotKeyword }}</a>
                 </li>
               </ul>
             </div>
@@ -163,12 +173,29 @@
       searchedKeyword:"",
       results:[],
       hotKeywords:["Java","Python","机器问答","信息检索","人工智能"],
+      activeHotKeywordIndex:0,
       sortBy:"default",
       priceOrder:"asc",
       loading:false,
-      hasSearched:false
+      hasSearched:false,
+      rotationTimer:null
     },
     computed:{
+      activeHotKeyword(){
+        if(this.hotKeywords.length===0){
+          return "";
+        }
+        return this.hotKeywords[this.activeHotKeywordIndex];
+      },
+      showSearchSuggestion(){
+        return !this.keyword.trim() && !!this.activeHotKeyword;
+      },
+      currentSearchPlaceholder(){
+        if(this.showSearchSuggestion){
+          return "";
+        }
+        return "请输入商品关键词";
+      },
       currentSortLabel(){
         if(this.sortBy==="popularity"){
           return "当前排序：人气优先";
@@ -188,13 +215,19 @@
         return this.hasSearched && !this.loading && this.searchedKeyword && this.results.length===0;
       }
     },
+    mounted(){
+      this.startHotKeywordRotation();
+    },
+    beforeDestroy(){
+      this.stopHotKeywordRotation();
+    },
     methods:{
-      searchPage(){
-        var trimmedKeyword = this.keyword.trim();
-        this.keyword = trimmedKeyword;
-        this.searchedKeyword = trimmedKeyword;
+      searchPage(keywordOverride){
+        var resolvedKeyword = this.resolveSearchKeyword(keywordOverride);
+        this.keyword = resolvedKeyword;
+        this.searchedKeyword = resolvedKeyword;
         this.hasSearched = true;
-        if(!trimmedKeyword){
+        if(!resolvedKeyword){
           this.results = [];
           this.focusKeywordInput();
           return;
@@ -205,7 +238,7 @@
             method: "POST",
             url:"/query",
             params:{
-              keyword:trimmedKeyword,
+              keyword:resolvedKeyword,
               pageNo:1,
               pageSize:20,
               sortBy:this.sortBy,
@@ -219,9 +252,17 @@
           this.loading=false;
         })
       },
-      fillKeyword(hotKeyword){
+      resolveSearchKeyword(keywordOverride){
+        var rawKeyword = typeof keywordOverride === "string" ? keywordOverride : this.keyword;
+        var trimmedKeyword = rawKeyword ? rawKeyword.trim() : "";
+        if(trimmedKeyword){
+          return trimmedKeyword;
+        }
+        return this.activeHotKeyword ? this.activeHotKeyword.trim() : "";
+      },
+      searchByHotKeyword(hotKeyword){
         this.keyword = hotKeyword;
-        this.focusKeywordInput();
+        this.searchPage(hotKeyword);
       },
       changeSort(sortBy){
         this.sortBy = sortBy;
@@ -246,6 +287,21 @@
       focusKeywordInput(){
         if(this.$refs.keywordInput){
           this.$refs.keywordInput.focus();
+        }
+      },
+      startHotKeywordRotation(){
+        if(this.hotKeywords.length < 2){
+          return;
+        }
+        this.stopHotKeywordRotation();
+        this.rotationTimer = window.setInterval(()=>{
+          this.activeHotKeywordIndex = (this.activeHotKeywordIndex + 1) % this.hotKeywords.length;
+        }, 2500);
+      },
+      stopHotKeywordRotation(){
+        if(this.rotationTimer){
+          window.clearInterval(this.rotationTimer);
+          this.rotationTimer = null;
         }
       }
     }

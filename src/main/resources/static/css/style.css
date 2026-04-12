@@ -460,6 +460,60 @@ b {
     position: relative
 }
 
+.s-combobox-input-wrap {
+    position: relative
+}
+
+.search-suggestion-inline {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    width: calc(100% - 10px);
+    height: 20px;
+    color: #999;
+    pointer-events: none;
+    white-space: nowrap
+}
+
+.search-suggestion-prefix {
+    flex: none
+}
+
+.search-suggestion-word-window {
+    position: relative;
+    display: inline-block;
+    flex: 1;
+    min-width: 0;
+    height: 20px;
+    overflow: hidden
+}
+
+.search-suggestion-word {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: top
+}
+
+.search-word-up-enter-active,
+.search-word-up-leave-active {
+    transition: transform .24s ease, opacity .24s ease
+}
+
+.search-word-up-enter {
+    opacity: 0;
+    transform: translateY(12px)
+}
+
+.search-word-up-leave-to {
+    opacity: 0;
+    transform: translateY(-12px)
+}
+
 .relKeyTop {
     padding: 4px 0 0;
     margin-left: -13px;
@@ -476,7 +530,8 @@ b {
 }
 
 .relKeyTop li a {
-    color: #999
+    color: #999;
+    cursor: pointer
 }
 
 .relKeyTop li a:hover {
