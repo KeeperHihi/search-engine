@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8"/>
+  <title>请选择要进入的搜索系统</title>
+  <style>
+    body {
+      margin: 0;
+      font: 16px/1.6 tahoma, arial, "宋体";
+      background: #f5f7fb;
+      color: #222;
+    }
+
+    .home-page {
+      width: 720px;
+      margin: 80px auto;
+      padding: 36px 40px;
+      background: #fff;
+      border: 1px solid #dfe6f1;
+    }
+
+    .home-page h1 {
+      margin: 0 0 10px;
+      font-size: 28px;
+    }
+
+    .home-page p {
+      margin: 0 0 24px;
+      color: #666;
+    }
+
+    .home-links a {
+      display: block;
+      margin-bottom: 14px;
+      padding: 14px 18px;
+      border: 1px solid #d9e0ef;
+      color: #1f3a8a;
+      text-decoration: none;
+      background: #f8faff;
+    }
+
+    .home-links a:hover {
+      background: #eef4ff;
+    }
+  </style>
+</head>
+<body>
+<div class="home-page">
+  <h1>请选择要进入的搜索系统</h1>
+  <div class="home-links">
+    <a th:href="@{/jdsearch}">京东搜索</a>
+    <a th:href="@{/contentse}">全文搜索</a>
+  </div>
+</div>
+</body>
+</html>

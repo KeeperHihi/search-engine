@@ -25,11 +25,6 @@ public class ContentController {
         return contentService.parseContent(keyword);
     }
 
-    @GetMapping("/writeQA")
-    public Boolean writeQA() throws IOException {
-        return contentService.writeQAContent();
-    }
-
     @PostMapping("/writeJD")
     public Boolean writeJD() throws IOException {
         return contentService.writeJDContent();
@@ -46,14 +41,5 @@ public class ContentController {
                     String priceOrder)
             throws IOException {
         return contentService.searchPage(keyword, pageNo, pageSize, sortBy, priceOrder);
-    }
-
-    @PostMapping("/queryse")
-    public List<Map<String, Object>> queryQuestion(
-            @RequestParam("keyword") String keyword,
-            @RequestParam("pageNo") int pageNo,
-            @RequestParam("pageSize") int pageSize)
-            throws IOException {
-        return contentService.searchQA(keyword, pageNo, pageSize);
     }
 }

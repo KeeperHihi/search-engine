@@ -2,9 +2,7 @@ package com.example.demo.utils;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
-import com.example.demo.pojo.Answer;
 import com.example.demo.pojo.Content;
-import com.example.demo.pojo.Question;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,14 +12,6 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class JsonParseUtil {
-
-    public List<Question> parseJson(String jsonFilePath) throws IOException {
-        return parseArray(jsonFilePath, Question.class);
-    }
-
-    public List<Answer> parseAnJson(String jsonFilePath) throws IOException {
-        return parseArray(jsonFilePath, Answer.class);
-    }
 
     public List<Content> parseJDJson(String jsonFilePath) throws IOException {
         List<Content> contents = parseArray(jsonFilePath, Content.class);

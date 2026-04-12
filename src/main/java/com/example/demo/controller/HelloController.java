@@ -1,9 +1,8 @@
 package com.example.demo.controller;
 
-import com.example.demo.service.ContentService;
+import com.example.demo.pojo.courseqa.CourseQaAnswerDetail;
+import com.example.demo.service.CourseQaSearchService;
 import java.io.IOException;
-import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,16 +11,15 @@ import org.springframework.web.bind.annotation.PathVariable;
 @Controller
 public class HelloController {
 
-    private final ContentService contentService;
+    private final CourseQaSearchService courseQaSearchService;
 
-    public HelloController(ContentService contentService) {
-        this.contentService = contentService;
+    public HelloController(CourseQaSearchService courseQaSearchService) {
+        this.courseQaSearchService = courseQaSearchService;
     }
 
     @GetMapping({"/", "/index"})
     public String index() {
-        // 根路径直接跳到商品搜索，避免保留无实际价值的中间页。
-        return "redirect:/jdsearch";
+        return "index";
     }
 
     @GetMapping("/jdsearch")
@@ -34,22 +32,20 @@ public class HelloController {
         return "se";
     }
 
-    @GetMapping("/answer/{qid}")
-    public String searchAnswer(Model model, @PathVariable("qid") String qid) throws IOException {
-        List<Map<String, Object>> answerList = contentService.searchAnswer(qid);
-        if (answerList.isEmpty()) {
+    @GetMapping("/answer/{answerId}")
+    public String searchAnswer(Model model, @PathVariable("answerId") String answerId)
+            throws IOException {
+        CourseQaAnswerDetail answerDetail = courseQaSearchService.getAnswerDetail(answerId);
+        if (answerDetail == null) {
             return "redirect:/contentse";
         }
 
-        Map<String, Object> answer = answerList.get(0);
-
-        model.addAttribute("qid", answer.get("qid"));
-        model.addAttribute("qzh", answer.get("qzh"));
-        model.addAttribute("qen", answer.get("qen"));
-        model.addAttribute("qdomain", answer.get("qdomain"));
-        model.addAttribute("aid", answer.get("aid"));
-        model.addAttribute("azh", answer.get("azh"));
-        model.addAttribute("aen", answer.get("aen"));
+        model.addAttribute("answerId", answerDetail.getAnswerDocumentId());
+        model.addAttribute("questionId", answerDetail.getQuestionId());
+        model.addAttribute("categoryName", answerDetail.getCategoryName());
+        model.addAttribute("questionText", answerDetail.getQuestionText());
+        model.addAttribute("answerText", answerDetail.getAnswerText());
+        model.addAttribute("answer_quality", answerDetail.getAnswer_quality());
         return "answer";
     }
 }

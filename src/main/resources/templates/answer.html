@@ -4,19 +4,69 @@
   <title>问题及答案</title>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 </head>
-<body>
-<!--输出数据-->
-<table style="margin: auto">
-  <!--  -->
-   <tr> <td><p th:text="'问题序号: '+${qid}+ '                     问题类型: '+ ${qdomain}"></p></td></tr>
-   <tr style="font-size: 16pt; color: blue"> <td><p th:text="'问题:  '+${qzh}"></p></td></tr>
-   <tr> <td><p th:text="'问题英文:  '+${qen}"></p></td></tr>
-   <tr> <td>  <hr> </td></tr>
-   <tr style="font-size: 16pt; color: blue"> <td><p th:text="'答案:  '+${azh}"></p></td></tr>
-   <tr> <td><p th:text="'答案英文:  '+${aen}"></p></td></tr>
-   <tr> <td>  <p th:text="'答案序号:  '+${aid}"></p></td></tr>
+<body style="font-family:tahoma,arial,'宋体'; background:#f7f9fc; color:#222;">
+<div style="width:900px; margin:36px auto; background:#fff; border:1px solid #dfe6f1; padding:28px 36px;">
+  <p style="margin-bottom:18px;">
+    <a th:href="@{/contentse}" style="color:#0000FF; text-decoration:none;">返回全文搜索</a>
+  </p>
 
- </table>
+  <p style="font-size:14px; color:#666; margin-bottom:12px;"
+     th:text="'类别: ' + ${categoryName} + '    题号: ' + ${questionId}"></p>
 
- </body>
- </html>
+  <div style="margin-bottom:18px; padding:12px 16px; background:#f7f9fe; border:1px solid #dfe6f1; font-size:14px; color:#555;">
+    <span style="margin-right:18px;">总分 <strong id="detail-total-score">-</strong></span>
+    <span style="margin-right:18px;">问题召回分 <strong id="detail-question-score">-</strong></span>
+    <span style="margin-right:18px;">答案重排分 <strong id="detail-answer-score">-</strong></span>
+    <span>answer_quality <strong id="detail-answer-quality" th:text="${answer_quality == null ? '-' : answer_quality}">-</strong></span>
+  </div>
+
+  <div style="margin-bottom:18px;">
+    <p style="font-size:18px; color:#0000FF; margin-bottom:10px;">问题</p>
+    <p style="font-size:16px; line-height:1.8;" th:text="${questionText}"></p>
+  </div>
+
+  <hr style="border:none; border-top:1px solid #e5eaf3; margin:20px 0;">
+
+  <div>
+    <p style="font-size:18px; color:#0000FF; margin-bottom:10px;">答案</p>
+    <p style="font-size:16px; line-height:1.9; white-space:pre-wrap;" th:text="${answerText}"></p>
+  </div>
+</div>
+<script th:inline="javascript">
+  (function () {
+    var answerId = /*[[${answerId}]]*/ "";
+    if (!answerId) {
+      return;
+    }
+
+    try {
+      var rawState = window.sessionStorage.getItem("courseQaSearchState");
+      if (!rawState) {
+        return;
+      }
+      var searchState = JSON.parse(rawState);
+      var results = searchState && searchState.results ? searchState.results : [];
+      var currentItem = null;
+      for (var index = 0; index < results.length; index++) {
+        if (results[index].answerDocumentId === answerId) {
+          currentItem = results[index];
+          break;
+        }
+      }
+      if (!currentItem) {
+        return;
+      }
+
+      document.getElementById("detail-total-score").textContent = Number(currentItem.totalScore || 0).toFixed(4);
+      document.getElementById("detail-question-score").textContent = Number(currentItem.questionRecallScore || 0).toFixed(4);
+      document.getElementById("detail-answer-score").textContent = Number(currentItem.answerRerankScore || 0).toFixed(4);
+      if (currentItem.answer_quality !== undefined && currentItem.answer_quality !== null) {
+        document.getElementById("detail-answer-quality").textContent = currentItem.answer_quality;
+      }
+    } catch (error) {
+      // 详情页评分展示只是辅助能力，缓存异常时不阻断主页面展示。
+    }
+  })();
+</script>
+</body>
+</html>

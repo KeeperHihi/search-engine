@@ -2,9 +2,7 @@ package com.example.demo.service;
 
 import com.alibaba.fastjson.JSON;
 import com.example.demo.constants.EsIndexNames;
-import com.example.demo.pojo.Answer;
 import com.example.demo.pojo.Content;
-import com.example.demo.pojo.Question;
 import com.example.demo.utils.ContentDocumentIdUtil;
 import com.example.demo.utils.GoodsDisplayUtil;
 import com.example.demo.utils.HtmlParseUtil;
@@ -27,16 +25,10 @@ import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentType;
-import org.elasticsearch.index.query.BoolQueryBuilder;
-import org.elasticsearch.index.query.MatchQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.query.functionscore.ScriptScoreQueryBuilder;
-import org.elasticsearch.script.Script;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -45,23 +37,18 @@ public class ContentService {
     private final RestHighLevelClient client;
     private final HtmlParseUtil htmlParseUtil;
     private final JsonParseUtil jsonParseUtil;
-
-    @Value("${search.data.question-file-path}")
-    private String questionFilePath;
-
-    @Value("${search.data.answer-file-path}")
-    private String answerFilePath;
-
-    @Value("${search.data.jd-file-path}")
-    private String jdFilePath;
+    private final String jdFilePath;
 
     public ContentService(
             @Qualifier("restHighLevelClient") RestHighLevelClient client,
             HtmlParseUtil htmlParseUtil,
-            JsonParseUtil jsonParseUtil) {
+            JsonParseUtil jsonParseUtil,
+            @org.springframework.beans.factory.annotation.Value("${search.data.jd-file-path}")
+                    String jdFilePath) {
         this.client = client;
         this.htmlParseUtil = htmlParseUtil;
         this.jsonParseUtil = jsonParseUtil;
+        this.jdFilePath = jdFilePath;
     }
 
     public boolean parseContent(String keyword) throws IOException {
@@ -98,79 +85,6 @@ public class ContentService {
         return paginateGoods(goodsList, pageNo, pageSize);
     }
 
-    public List<Map<String, Object>> searchQA(String keyword, int pageNo, int pageSize)
-            throws IOException {
-        SearchRequest searchRequest = new SearchRequest(EsIndexNames.INSURANCE_QUESTION);
-        SearchSourceBuilder sourceBuilder = buildPagedSourceBuilder(pageNo, pageSize);
-        sourceBuilder.query(buildQuestionQuery(keyword));
-
-        searchRequest.source(sourceBuilder);
-        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
-        return extractSourceList(searchResponse);
-    }
-
-    public List<Map<String, Object>> searchAnswer(String qid) throws IOException {
-        List<Map<String, Object>> questionList =
-                searchByTerm(EsIndexNames.INSURANCE_QUESTION, "qid", qid);
-        if (questionList.isEmpty()) {
-            return new ArrayList<Map<String, Object>>();
-        }
-
-        Map<String, Object> question = questionList.get(0);
-        String aid = extractAnswerId((String) question.get("qanswers"));
-        if (aid == null || aid.isEmpty()) {
-            return new ArrayList<Map<String, Object>>();
-        }
-
-        List<Map<String, Object>> answerList =
-                searchByTerm(EsIndexNames.INSURANCE_ANSWER, "aid", aid);
-        if (answerList.isEmpty()) {
-            return new ArrayList<Map<String, Object>>();
-        }
-
-        Map<String, Object> result = new HashMap<String, Object>();
-        result.put("qid", question.get("qid"));
-        result.put("qdomain", question.get("qdomain"));
-        result.put("qzh", question.get("qzh"));
-        result.put("qen", question.get("qen"));
-        result.put("aid", answerList.get(0).get("aid"));
-        result.put("azh", answerList.get(0).get("azh"));
-        result.put("aen", answerList.get(0).get("aen"));
-
-        List<Map<String, Object>> results = new ArrayList<Map<String, Object>>();
-        results.add(result);
-        return results;
-    }
-
-    public boolean writeQAContent() throws IOException {
-        BulkRequest questionRequest = new BulkRequest();
-        questionRequest.timeout("2m");
-
-        List<Question> questionList = jsonParseUtil.parseJson(questionFilePath);
-        for (Question question : questionList) {
-            // 问答索引同样使用稳定主键，避免重复导入时产生脏数据。
-            questionRequest.add(
-                    buildIndexRequest(EsIndexNames.INSURANCE_QUESTION, question.getQid(), question));
-        }
-
-        BulkRequest answerRequest = new BulkRequest();
-        answerRequest.timeout("2m");
-
-        List<Answer> answerList = jsonParseUtil.parseAnJson(answerFilePath);
-        for (Answer answer : answerList) {
-            answerRequest.add(
-                    buildIndexRequest(EsIndexNames.INSURANCE_ANSWER, answer.getAid(), answer));
-        }
-
-        boolean questionSuccess =
-                questionRequest.numberOfActions() == 0
-                        || !client.bulk(questionRequest, RequestOptions.DEFAULT).hasFailures();
-        boolean answerSuccess =
-                answerRequest.numberOfActions() == 0
-                        || !client.bulk(answerRequest, RequestOptions.DEFAULT).hasFailures();
-        return questionSuccess && answerSuccess;
-    }
-
     private SearchSourceBuilder buildGoodsSearchSourceBuilder(
             String keyword, int pageNo, int pageSize) {
         int normalizedPageNo = normalizePageNo(pageNo);
@@ -194,61 +108,6 @@ public class ContentService {
         sourceBuilder.size(normalizedPageSize);
         sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
         return sourceBuilder;
-    }
-
-    private QueryBuilder buildQuestionQuery(String keyword) {
-        String[] keywordParts = keyword.trim().split("\\s+");
-        if (keywordParts.length <= 1) {
-            return QueryBuilders.matchQuery("qzh", keyword);
-        }
-
-        MatchQueryBuilder firstKeywordQuery = QueryBuilders.matchQuery("qzh", keywordParts[0]);
-        firstKeywordQuery.boost(2);
-
-        StringBuilder remainingKeywords = new StringBuilder(keywordParts[1]);
-        for (int index = 2; index < keywordParts.length; index++) {
-            remainingKeywords.append(" ").append(keywordParts[index]);
-        }
-        MatchQueryBuilder remainingKeywordQuery =
-                QueryBuilders.matchQuery("qzh", remainingKeywords.toString());
-
-        String scoreScript =
-                "int weight=10;\n"
-                        + "def random= randomScore(params.uuidHash);\n"
-                        + "return weight*random";
-        Map<String, Object> scriptParams = new HashMap<String, Object>();
-        scriptParams.put("uuidHash", (int) (Math.random() * 100));
-
-        Script script =
-                new Script(Script.DEFAULT_SCRIPT_TYPE, "painless", scoreScript, scriptParams);
-        ScriptScoreQueryBuilder scriptScoreQueryBuilder =
-                QueryBuilders.scriptScoreQuery(remainingKeywordQuery, script);
-
-        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
-        boolQueryBuilder.should(firstKeywordQuery);
-        boolQueryBuilder.should(scriptScoreQueryBuilder);
-        return boolQueryBuilder;
-    }
-
-    private List<Map<String, Object>> searchByTerm(String indexName, String fieldName, String value)
-            throws IOException {
-        SearchRequest searchRequest = new SearchRequest(indexName);
-        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-        sourceBuilder.query(QueryBuilders.termQuery(fieldName, value));
-        sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
-        searchRequest.source(sourceBuilder);
-
-        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
-        return extractSourceList(searchResponse);
-    }
-
-    private String extractAnswerId(String qanswers) {
-        if (qanswers == null || qanswers.isEmpty()) {
-            return null;
-        }
-
-        String[] parts = qanswers.split("\"");
-        return parts.length > 1 ? parts[1] : null;
     }
 
     private int normalizePageNo(int pageNo) {
@@ -309,14 +168,6 @@ public class ContentService {
             indexRequest.id(documentId);
         }
         return indexRequest.source(JSON.toJSONString(document), XContentType.JSON);
-    }
-
-    private List<Map<String, Object>> extractSourceList(SearchResponse searchResponse) {
-        List<Map<String, Object>> sourceList = new ArrayList<Map<String, Object>>();
-        for (SearchHit searchHit : searchResponse.getHits().getHits()) {
-            sourceList.add(searchHit.getSourceAsMap());
-        }
-        return sourceList;
     }
 
     private List<Map<String, Object>> extractUniqueGoods(SearchResponse searchResponse) {

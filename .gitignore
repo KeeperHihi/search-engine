@@ -3,6 +3,8 @@ target/
 out/
 build/
 *.class
+AGENTS.md
+docs/prompts.md
 
 # JVM crash logs
 hs_err_pid*

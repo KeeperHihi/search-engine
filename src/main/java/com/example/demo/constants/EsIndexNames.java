@@ -7,8 +7,8 @@ package com.example.demo.constants;
 public final class EsIndexNames {
 
     public static final String JD_DATA = "jddata";
-    public static final String INSURANCE_QUESTION = "insurance_question";
-    public static final String INSURANCE_ANSWER = "insurance_answer";
+    public static final String COURSE_QA_QUESTION = "course_qa_question";
+    public static final String COURSE_QA_ANSWER = "course_qa_answer";
 
     private EsIndexNames() {
         // 工具类不需要实例化。
