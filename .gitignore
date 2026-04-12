@@ -23,10 +23,18 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
 
 # OS files
 .DS_Store
 Thumbs.db
 
+# Local tooling / runtime state
+.codex-run/
+.m2/
+.tmp-javac/
+
 elastic-search/
 data/
+
+example.json

@@ -41,15 +41,13 @@ public class HelloController {
             return "redirect:/contentse";
         }
 
-        Map<String, Object> answer = answerList.get(0);
-
-        model.addAttribute("qid", answer.get("qid"));
-        model.addAttribute("qzh", answer.get("qzh"));
-        model.addAttribute("qen", answer.get("qen"));
-        model.addAttribute("qdomain", answer.get("qdomain"));
-        model.addAttribute("aid", answer.get("aid"));
-        model.addAttribute("azh", answer.get("azh"));
-        model.addAttribute("aen", answer.get("aen"));
+        Map<String, Object> firstAnswer = answerList.get(0);
+        model.addAttribute("qid", firstAnswer.get("qid"));
+        model.addAttribute("topic", firstAnswer.get("topic"));
+        model.addAttribute("question", firstAnswer.get("question"));
+        model.addAttribute("bestAnswer", firstAnswer.get("answer"));
+        model.addAttribute("bestAnswerQuality", firstAnswer.get("answerQuality"));
+        model.addAttribute("answers", answerList);
         return "answer";
     }
 }
