@@ -1,22 +1,57 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>问题及答案</title>
-  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+  <link rel="stylesheet" th:href="@{/css/theme.css}"/>
+  <link rel="stylesheet" th:href="@{/css/qa.css}"/>
 </head>
-<body>
-<!--输出数据-->
-<table style="margin: auto">
-  <!--  -->
-   <tr> <td><p th:text="'问题序号: '+${qid}+ '                     问题类型: '+ ${qdomain}"></p></td></tr>
-   <tr style="font-size: 16pt; color: blue"> <td><p th:text="'问题:  '+${qzh}"></p></td></tr>
-   <tr> <td><p th:text="'问题英文:  '+${qen}"></p></td></tr>
-   <tr> <td>  <hr> </td></tr>
-   <tr style="font-size: 16pt; color: blue"> <td><p th:text="'答案:  '+${azh}"></p></td></tr>
-   <tr> <td><p th:text="'答案英文:  '+${aen}"></p></td></tr>
-   <tr> <td>  <p th:text="'答案序号:  '+${aid}"></p></td></tr>
+<body class="warm-page detail-page">
+<div class="detail-shell">
+  <div class="detail-nav">
+    <a class="back-link" th:href="@{/contentse}">返回全文搜索</a>
+  </div>
 
- </table>
+  <section class="detail-hero">
+    <p class="eyebrow">Answer Detail</p>
+    <h1 class="display-title detail-title" th:text="${question}"></h1>
+    <p class="detail-subtitle">当前页面展示同一问题下的候选答案，按质量分从高到低排列，首条答案会作为摘要区的最佳答案展示。</p>
+    <div class="hero-stats">
+      <span class="pill" th:text="'问题ID · ' + ${qid}"></span>
+      <span class="pill" th:text="'主题 · ' + ${topic}"></span>
+      <span class="pill accent" th:text="'最优质量分 · ' + ${bestAnswerQuality}"></span>
+      <span class="pill" th:text="'答案数 · ' + ${#lists.size(answers)}"></span>
+    </div>
 
- </body>
- </html>
+    <div class="detail-summary">
+      <div class="summary-label">最佳答案摘要</div>
+      <p class="summary-text" th:text="${bestAnswer}"></p>
+    </div>
+  </section>
+
+  <section class="section-block answer-stage">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">答案列表</h2>
+        <p class="section-desc">首条答案被重点强调，其余答案作为补充候选，便于比较质量分与表述差异。</p>
+      </div>
+    </div>
+
+    <div class="answer-list">
+      <article th:each="item, stat : ${answers}" class="answer-item" th:classappend="${stat.index == 0} ? ' best' : ''">
+        <div class="answer-rank" th:text="${stat.index + 1}"></div>
+        <div class="answer-content">
+          <div class="answer-meta">
+            <span class="pill accent" th:text="${stat.index == 0} ? '最佳答案' : '候选答案'"></span>
+            <span th:text="'答案ID · ' + ${item.id}"></span>
+            <span th:text="'质量分 · ' + ${item.answerQuality}"></span>
+          </div>
+          <p class="answer-text" th:text="${item.answer}"></p>
+        </div>
+      </article>
+    </div>
+  </section>
+</div>
+</body>
+</html>

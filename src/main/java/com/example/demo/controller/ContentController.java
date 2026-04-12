@@ -30,6 +30,11 @@ public class ContentController {
         return contentService.writeQAContent();
     }
 
+    @GetMapping("/writeCustomQA")
+    public Boolean writeCustomQA() throws IOException {
+        return contentService.writeQAContent();
+    }
+
     @PostMapping("/writeJD")
     public Boolean writeJD() throws IOException {
         return contentService.writeJDContent();
@@ -52,8 +57,9 @@ public class ContentController {
     public List<Map<String, Object>> queryQuestion(
             @RequestParam("keyword") String keyword,
             @RequestParam("pageNo") int pageNo,
-            @RequestParam("pageSize") int pageSize)
+            @RequestParam("pageSize") int pageSize,
+            @RequestParam(value = "deduplicate", defaultValue = "false") boolean deduplicate)
             throws IOException {
-        return contentService.searchQA(keyword, pageNo, pageSize);
+        return contentService.searchQA(keyword, pageNo, pageSize, deduplicate);
     }
 }
