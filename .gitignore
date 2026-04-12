@@ -31,4 +31,6 @@ pnpm-debug.log*
 Thumbs.db
 
 elastic-search/
+!elastic-search/.gitkeep
 data/
+!data/.gitkeep
