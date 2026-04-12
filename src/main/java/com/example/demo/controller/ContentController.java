@@ -25,9 +25,14 @@ public class ContentController {
         return contentService.parseContent(keyword);
     }
 
+    @GetMapping("/writeJD")
+    public Boolean writeJdByGet() throws IOException {
+        return importJdData();
+    }
+
     @PostMapping("/writeJD")
     public Boolean writeJD() throws IOException {
-        return contentService.writeJDContent();
+        return importJdData();
     }
 
     @PostMapping("/query")
@@ -41,5 +46,9 @@ public class ContentController {
                     String priceOrder)
             throws IOException {
         return contentService.searchPage(keyword, pageNo, pageSize, sortBy, priceOrder);
+    }
+
+    private Boolean importJdData() throws IOException {
+        return contentService.writeJDContent();
     }
 }

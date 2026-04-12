@@ -546,7 +546,7 @@ GET /parse/{keyword}
 
 #### 路径 B：从本地 JSON 导入
 
-`POST /writeJD` 调用的 `ContentService.writeJDContent()` 会从配置文件里的商品路径读取：
+`GET /writeJD` 或 `POST /writeJD` 调用的 `ContentService.writeJDContent()` 会从配置文件里的商品路径读取：
 
 ```text
 ./data/jddata.json

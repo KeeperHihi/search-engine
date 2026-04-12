@@ -362,7 +362,7 @@ src/main/resources/templates/jdsearch.html
 它主要负责这些接口：
 
 - `GET /parse/{keyword}`：抓京东并写入 ES
-- `POST /writeJD`：把本地商品 JSON 导入 `jddata`
+- `GET /writeJD` 或 `POST /writeJD`：把本地商品 JSON 导入 `jddata`
 - `POST /query`：商品搜索接口，供页面调用
 - `POST /queryse`：问答搜索接口
 - `GET /writeQA`：把问答 JSON 数据写入 ES
@@ -670,7 +670,7 @@ GET /parse/{keyword}
 
 ### 13.1 商品数据导入
 
-`POST /writeJD` 调用的 `ContentService.writeJDContent()` 的作用是：
+`GET /writeJD` 或 `POST /writeJD` 调用的 `ContentService.writeJDContent()` 的作用是：
 
 - 先从 JSON 文件读商品数据
 - 再批量写入 ES 的 `jddata`
