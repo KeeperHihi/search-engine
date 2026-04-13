@@ -148,7 +148,7 @@
       recallStrategy:"top_k",
       topK:5,
       topPThreshold:0.85,
-      pageSize:20,
+      pageSize:200,
       keywordTerms:[],
       loading:false,
       hasSearched:false,
@@ -224,9 +224,9 @@
       },
       normalizePageSize(pageSize){
         if(!pageSize || pageSize < 1){
-          return 20;
+          return 200;
         }
-        return Math.min(pageSize, 100);
+        return Math.min(pageSize, 200);
       },
       buildStrategyLabel(payload){
         var currentStrategy = payload && payload.recallStrategy ? payload.recallStrategy : this.recallStrategy;
@@ -286,7 +286,7 @@
           this.recallStrategy = searchState.recallStrategy || "top_k";
           this.topK = searchState.topK || 5;
           this.topPThreshold = searchState.topPThreshold || 0.85;
-          this.pageSize = searchState.pageSize || 20;
+          this.pageSize = searchState.pageSize || 200;
           this.hasSearched = !!searchState.hasSearched;
           this.searchMeta = searchState.searchMeta || {
             recalledQuestionCount:0,

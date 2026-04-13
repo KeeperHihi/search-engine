@@ -70,6 +70,8 @@ public class CourseQaSearchService {
     private static final int DEFAULT_TOP_K = 5;
     private static final int MAX_TOP_K = 20;
     private static final double DEFAULT_TOP_P_THRESHOLD = 0.85D;
+    private static final int DEFAULT_PAGE_SIZE = 200;
+    private static final int MAX_PAGE_SIZE = 200;
     private static final int MAX_CANDIDATE_ANSWERS = 10000;
     private static final int TOP_P_FETCH_SIZE = 120;
     private static final String IK_INDEX_ANALYZER = "ik_max_word";
@@ -744,7 +746,10 @@ public class CourseQaSearchService {
     }
 
     private int normalizePageSize(int pageSize) {
-        return pageSize < 1 ? 20 : pageSize;
+        if (pageSize < 1) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(pageSize, MAX_PAGE_SIZE);
     }
 
     private String normalizeQuestionId(String questionId) {
