@@ -21,4 +21,6 @@ public class CourseQaSearchResultItem {
     private double totalScore;
     private double questionRecallScore;
     private double answerRerankScore;
+    private double answerCoverage;
+    private double answerLengthScore;
 }

@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CourseQaSearchResponse {
     private String keyword;
+    private List<String> keywordTerms = new ArrayList<String>();
     private String recallStrategy;
     private int topK;
     private double topPThreshold;

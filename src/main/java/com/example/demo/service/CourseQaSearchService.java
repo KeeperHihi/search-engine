@@ -144,6 +144,7 @@ public class CourseQaSearchService {
         }
 
         List<String> keywordTerms = analyzeTextWithIk(normalizedKeyword);
+        response.setKeywordTerms(keywordTerms);
         List<CourseQaSearchResultItem> rankedAnswers =
                 rerankAnswers(keywordTerms, questionHits, answerCandidates);
         List<CourseQaSearchResultItem> pagedItems =
@@ -168,6 +169,7 @@ public class CourseQaSearchService {
         }
 
         Map<String, Object> sourceMap = getResponse.getSourceAsMap();
+        String questionDocumentId = readString(sourceMap, "questionDocumentId");
         CourseQaAnswerDetail answerDetail = new CourseQaAnswerDetail();
         answerDetail.setAnswerDocumentId(readString(sourceMap, "answerDocumentId"));
         answerDetail.setCategoryName(readString(sourceMap, "categoryName"));
@@ -175,7 +177,25 @@ public class CourseQaSearchService {
         answerDetail.setQuestionText(readString(sourceMap, "questionText"));
         answerDetail.setAnswerText(readString(sourceMap, "answerText"));
         answerDetail.setAnswer_quality(readNullableInteger(sourceMap, "answer_quality"));
+        answerDetail.setQuestionTerms(loadQuestionTerms(questionDocumentId));
+        answerDetail.setAnswerTerms(readStringList(sourceMap, "answerTerms"));
         return answerDetail;
+    }
+
+    private List<String> loadQuestionTerms(String questionDocumentId) throws IOException {
+        if (questionDocumentId == null || questionDocumentId.trim().isEmpty()) {
+            return new ArrayList<String>();
+        }
+        if (!indexExists(EsIndexNames.COURSE_QA_QUESTION)) {
+            return new ArrayList<String>();
+        }
+
+        GetRequest getRequest = new GetRequest(EsIndexNames.COURSE_QA_QUESTION, questionDocumentId);
+        GetResponse getResponse = client.get(getRequest, RequestOptions.DEFAULT);
+        if (!getResponse.isExists()) {
+            return new ArrayList<String>();
+        }
+        return readStringList(getResponse.getSourceAsMap(), "questionTerms");
     }
 
     private CourseQaImportResult importDatasetInternal(String sourceName, byte[] datasetBytes)
@@ -322,6 +342,8 @@ public class CourseQaSearchService {
             resultItem.setQuestionRank(questionHit.questionRank);
             resultItem.setQuestionRecallScore(roundScore(scoreBreakdown.getQuestionRecallScore()));
             resultItem.setAnswerRerankScore(roundScore(scoreBreakdown.getAnswerRerankScore()));
+            resultItem.setAnswerCoverage(roundScore(scoreBreakdown.getAnswerCoverage()));
+            resultItem.setAnswerLengthScore(roundScore(scoreBreakdown.getAnswerLengthScore()));
             resultItem.setTotalScore(roundScore(scoreBreakdown.getTotalScore()));
             rankedItems.add(resultItem);
         }

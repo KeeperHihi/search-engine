@@ -3,6 +3,7 @@ package com.example.demo.controller;
 import com.example.demo.pojo.courseqa.CourseQaAnswerDetail;
 import com.example.demo.service.CourseQaSearchService;
 import java.io.IOException;
+import java.util.List;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,6 +47,16 @@ public class HelloController {
         model.addAttribute("questionText", answerDetail.getQuestionText());
         model.addAttribute("answerText", answerDetail.getAnswerText());
         model.addAttribute("answer_quality", answerDetail.getAnswer_quality());
+        model.addAttribute("questionTermsText", joinTerms(answerDetail.getQuestionTerms()));
+        model.addAttribute("answerTermsText", joinTerms(answerDetail.getAnswerTerms()));
+        model.addAttribute("answerTerms", answerDetail.getAnswerTerms());
         return "answer";
+    }
+
+    private String joinTerms(List<String> terms) {
+        if (terms == null || terms.isEmpty()) {
+            return "无";
+        }
+        return String.join(" / ", terms);
     }
 }

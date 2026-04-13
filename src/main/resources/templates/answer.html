@@ -23,6 +23,10 @@
   <div style="margin-bottom:18px;">
     <p style="font-size:18px; color:#0000FF; margin-bottom:10px;">问题</p>
     <p style="font-size:16px; line-height:1.8;" th:text="${questionText}"></p>
+    <div style="margin-top:12px; padding:10px 12px; background:#f7f9fe; border:1px solid #dfe6f1;">
+      <p style="margin:0 0 6px; font-size:13px; color:#666;">问题分词结果</p>
+      <p style="margin:0; font-size:14px; line-height:1.8; color:#444;" th:text="${questionTermsText}"></p>
+    </div>
   </div>
 
   <hr style="border:none; border-top:1px solid #e5eaf3; margin:20px 0;">
@@ -30,11 +34,25 @@
   <div>
     <p style="font-size:18px; color:#0000FF; margin-bottom:10px;">答案</p>
     <p style="font-size:16px; line-height:1.9; white-space:pre-wrap;" th:text="${answerText}"></p>
+    <div style="margin-top:12px; padding:10px 12px; background:#f7f9fe; border:1px solid #dfe6f1;">
+      <p style="margin:0 0 6px; font-size:13px; color:#666;">答案分词结果</p>
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+        <p id="detail-answer-terms" style="margin:0; font-size:14px; line-height:1.8; color:#444; flex:1;" th:text="${answerTermsText}"></p>
+      </div>
+    </div>
+    <div style="margin-top:12px; padding:10px 12px; background:#f7f9fe; border:1px solid #dfe6f1;">
+      <p style="margin:0 0 6px; font-size:13px; color:#666;">实际搜索问题的分词结果</p>
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+        <p id="detail-keyword-terms" style="margin:0; font-size:14px; line-height:1.8; color:#444; flex:1;">无</p>
+        <span id="detail-keyword-hit-ratio" style="display:none; min-width:48px; text-align:right; color:#c0392b; font-size:14px; line-height:1.8;">0/0</span>
+      </div>
+    </div>
   </div>
 </div>
 <script th:inline="javascript">
   (function () {
     var answerId = /*[[${answerId}]]*/ "";
+    var answerTerms = /*[[${answerTerms}]]*/ [];
     if (!answerId) {
       return;
     }
@@ -63,8 +81,90 @@
       if (currentItem.answer_quality !== undefined && currentItem.answer_quality !== null) {
         document.getElementById("detail-answer-quality").textContent = currentItem.answer_quality;
       }
+      renderAnswerTerms(answerTerms, []);
+      if (searchState.keywordTerms && searchState.keywordTerms.length > 0) {
+        renderKeywordTerms(searchState.keywordTerms, answerTerms);
+        renderAnswerTerms(answerTerms, searchState.keywordTerms);
+      }
     } catch (error) {
       // 详情页评分展示只是辅助能力，缓存异常时不阻断主页面展示。
+    }
+
+    function renderAnswerTerms(answerTerms, keywordTerms) {
+      renderHighlightedTerms("detail-answer-terms", answerTerms, keywordTerms);
+    }
+
+    function renderKeywordTerms(keywordTerms, answerTerms) {
+      var container = document.getElementById("detail-keyword-terms");
+      var ratioElement = document.getElementById("detail-keyword-hit-ratio");
+      if (!container) {
+        return;
+      }
+
+      var renderResult = renderHighlightedTerms("detail-keyword-terms", keywordTerms, answerTerms);
+      if (!ratioElement) {
+        return;
+      }
+      ratioElement.style.display = "inline";
+      ratioElement.textContent = renderResult.hitCount + "/" + renderResult.totalCount;
+    }
+
+    function renderHighlightedTerms(containerId, baseTerms, hitTerms) {
+      var container = document.getElementById(containerId);
+      if (!container) {
+        return {hitCount: 0, totalCount: 0};
+      }
+
+      if (!Array.isArray(baseTerms) || baseTerms.length === 0) {
+        container.textContent = "无";
+        return {hitCount: 0, totalCount: 0};
+      }
+
+      var normalizedHitTerms = buildNormalizedTermSet(hitTerms);
+      var hitCount = 0;
+      container.textContent = "";
+      for (var termIndex = 0; termIndex < baseTerms.length; termIndex++) {
+        var rawTerm = baseTerms[termIndex];
+        var currentTerm = rawTerm === undefined || rawTerm === null ? "" : String(rawTerm);
+        var currentSpan = document.createElement("span");
+        if (normalizedHitTerms[normalizeTerm(currentTerm)]) {
+          currentSpan.style.color = "#c0392b";
+          hitCount++;
+        }
+        currentSpan.textContent = currentTerm;
+        container.appendChild(currentSpan);
+
+        if (termIndex < baseTerms.length - 1) {
+          container.appendChild(document.createTextNode(" / "));
+        }
+      }
+
+      return {
+        hitCount: hitCount,
+        totalCount: baseTerms.length
+      };
+    }
+
+    function buildNormalizedTermSet(terms) {
+      var normalizedTerms = {};
+      if (!Array.isArray(terms)) {
+        return normalizedTerms;
+      }
+
+      for (var termIndex = 0; termIndex < terms.length; termIndex++) {
+        var normalizedTerm = normalizeTerm(terms[termIndex]);
+        if (normalizedTerm) {
+          normalizedTerms[normalizedTerm] = true;
+        }
+      }
+      return normalizedTerms;
+    }
+
+    function normalizeTerm(term) {
+      if (term === undefined || term === null) {
+        return "";
+      }
+      return String(term).trim().toLowerCase();
     }
   })();
 </script>

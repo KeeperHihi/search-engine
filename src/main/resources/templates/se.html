@@ -100,6 +100,8 @@
           <span>总分 {{ formatScore(item.totalScore) }}</span>
           <span>问题召回分 {{ formatScore(item.questionRecallScore) }}</span>
           <span>答案重排分 {{ formatScore(item.answerRerankScore) }}</span>
+          <span>答案覆盖度得分 {{ formatScore(item.answerCoverage) }}</span>
+          <span>答案长度得分 {{ formatScore(item.answerLengthScore) }}</span>
           <span>answer_quality {{ formatQuality(item.answer_quality) }}</span>
           <a class="qa-detail-link" @click.prevent="openAnswer(item.answerDocumentId)">查看详情</a>
         </div>
@@ -113,6 +115,7 @@
 <script th:src="@{/js/axios.min.js}"></script>
 <script type="text/javascript">
   var SEARCH_STATE_KEY = "courseQaSearchState";
+  var SEARCH_STATE_VERSION = 3;
   var vm = new Vue({
     el:'#app',
     data:{
@@ -122,6 +125,7 @@
       topK:5,
       topPThreshold:0.85,
       pageSize:20,
+      keywordTerms:[],
       loading:false,
       hasSearched:false,
       errorMessage:"",
@@ -167,6 +171,7 @@
         }).then(response=>{
           var payload = response.data || {};
           this.results = payload.items || [];
+          this.keywordTerms = Array.isArray(payload.keywordTerms) ? payload.keywordTerms : [];
           this.searchMeta = {
             recalledQuestionCount: payload.recalledQuestionCount || 0,
             recalledAnswerCount: payload.recalledAnswerCount || 0,
@@ -214,6 +219,7 @@
       },
       clearSearchResults(){
         this.results = [];
+        this.keywordTerms = [];
         this.searchMeta = {
           recalledQuestionCount:0,
           recalledAnswerCount:0,
@@ -222,7 +228,9 @@
       },
       persistSearchState(){
         var searchState = {
+          version:SEARCH_STATE_VERSION,
           keyword:this.keyword,
+          keywordTerms:this.keywordTerms,
           results:this.results,
           recallStrategy:this.recallStrategy,
           topK:this.topK,
@@ -244,7 +252,12 @@
             return;
           }
           var searchState = JSON.parse(rawState);
+          if(searchState.version !== SEARCH_STATE_VERSION || !this.hasCompleteScoreFields(searchState.results)){
+            window.sessionStorage.removeItem(SEARCH_STATE_KEY);
+            return;
+          }
           this.keyword = searchState.keyword || "";
+          this.keywordTerms = Array.isArray(searchState.keywordTerms) ? searchState.keywordTerms : [];
           this.results = searchState.results || [];
           this.recallStrategy = searchState.recallStrategy || "top_k";
           this.topK = searchState.topK || 5;
@@ -260,6 +273,18 @@
           // 缓存读失败时使用默认页面状态。
         }
       },
+      hasCompleteScoreFields(results){
+        if(!Array.isArray(results) || results.length === 0){
+          return true;
+        }
+        for(var index = 0; index < results.length; index++){
+          var item = results[index] || {};
+          if(item.answerCoverage === undefined || item.answerLengthScore === undefined){
+            return false;
+          }
+        }
+        return true;
+      },
       openAnswer(answerDocumentId){
         this.persistSearchState();
         window.location.href = "/answer/" + answerDocumentId;
@@ -271,7 +296,7 @@
       },
       formatScore(score){
         if(score === undefined || score === null || score === ""){
-          return "0.0000";
+          return "-";
         }
         return Number(score).toFixed(4);
       },

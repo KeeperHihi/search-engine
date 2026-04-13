@@ -1,5 +1,6 @@
 package com.example.demo.pojo.courseqa;
 
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,4 +18,6 @@ public class CourseQaAnswerDetail {
     private String questionText;
     private String answerText;
     private Integer answer_quality;
+    private List<String> questionTerms;
+    private List<String> answerTerms;
 }
