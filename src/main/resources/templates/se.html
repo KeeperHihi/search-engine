@@ -139,7 +139,7 @@
 <script th:src="@{/js/axios.min.js}"></script>
 <script type="text/javascript">
   var SEARCH_STATE_KEY = "courseQaSearchState";
-  var SEARCH_STATE_VERSION = 4;
+  var SEARCH_STATE_VERSION = 5;
   var vm = new Vue({
     el:'#app',
     data:{
@@ -259,7 +259,6 @@
           recallStrategy:this.recallStrategy,
           topK:this.topK,
           topPThreshold:this.topPThreshold,
-          pageSize:this.pageSize,
           hasSearched:this.hasSearched,
           searchMeta:this.searchMeta
         };
@@ -286,7 +285,7 @@
           this.recallStrategy = searchState.recallStrategy || "top_k";
           this.topK = searchState.topK || 5;
           this.topPThreshold = searchState.topPThreshold || 0.85;
-          this.pageSize = searchState.pageSize || 200;
+          this.pageSize = 200;
           this.hasSearched = !!searchState.hasSearched;
           this.searchMeta = searchState.searchMeta || {
             recalledQuestionCount:0,
