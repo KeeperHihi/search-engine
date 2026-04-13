@@ -1,5 +1,6 @@
 package com.example.demo.utils;
 
+import java.util.Collection;
 import java.util.Set;
 
 /**
@@ -13,30 +14,40 @@ public final class CourseQaRankingUtil {
     }
 
     public static ScoreBreakdown scoreCandidate(
-            String keyword,
-            String questionTokensText,
+            Collection<String> keywordTerms,
+            Collection<String> questionTerms,
             String answerText,
-            String answerTokensText,
+            Collection<String> answerTerms,
             double normalizedQuestionRecallScore) {
-        Set<String> keywordTokens = CourseQaTextUtil.buildSearchTokenSet(keyword);
-        Set<String> answerTokens = CourseQaTextUtil.parseStoredTokens(answerTokensText);
-        Set<String> questionTokens = CourseQaTextUtil.parseStoredTokens(questionTokensText);
-        double questionCoverage = CourseQaTextUtil.calculateContainment(keywordTokens, questionTokens);
-        double answerCoverage = CourseQaTextUtil.calculateContainment(keywordTokens, answerTokens);
+        Set<String> keywordTermSet = CourseQaTextUtil.toTermSet(keywordTerms);
+        Set<String> answerTermSet = CourseQaTextUtil.toTermSet(answerTerms);
+        Set<String> questionTermSet = CourseQaTextUtil.toTermSet(questionTerms);
+
+        // 计算 |queryTerms ∩ questionTerms| / |queryTerms|。
+        // 这个值保留给调试和答辩解释使用，不再重复计入最终总分。
+        double questionCoverage = CourseQaTextUtil.calculateContainment(keywordTermSet, questionTermSet);
+
+        // 计算 |queryTerms ∩ answerTerms| / |queryTerms|
+        double answerCoverage = CourseQaTextUtil.calculateContainment(keywordTermSet, answerTermSet);
+
+        // 答案长度分，min(answerLength, 120) / 120
         double answerLengthScore = buildAnswerLengthScore(answerText);
 
         double answerRerankScore = 0.70D * answerCoverage + 0.30D * answerLengthScore;
-        double totalScore =
-                0.60D * normalizedQuestionRecallScore
-                        + 0.15D * questionCoverage
-                        + 0.25D * answerRerankScore;
+        // 最终排序只看两段：
+        // 1. 问题召回分：当前问题 _score / 本次查询第一名问题 _score
+        // 2. 答案重排分：答案关键词覆盖率 + 答案长度
+        double totalScore = 0
+            + 0.70D * normalizedQuestionRecallScore
+            + 0.30D * answerRerankScore;
         return new ScoreBreakdown(
-                totalScore,
-                normalizedQuestionRecallScore,
-                answerRerankScore,
-                questionCoverage,
-                answerCoverage,
-                answerLengthScore);
+            totalScore,
+            normalizedQuestionRecallScore,
+            answerRerankScore,
+            questionCoverage,
+            answerCoverage,
+            answerLengthScore
+        );
     }
 
     private static double buildAnswerLengthScore(String answerText) {

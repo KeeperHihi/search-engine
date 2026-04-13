@@ -22,6 +22,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +37,8 @@ import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.client.indices.AnalyzeRequest;
+import org.elasticsearch.client.indices.AnalyzeResponse;
 import org.elasticsearch.client.indices.CreateIndexRequest;
 import org.elasticsearch.client.indices.GetIndexRequest;
 import org.elasticsearch.common.unit.TimeValue;
@@ -68,6 +71,9 @@ public class CourseQaSearchService {
     private static final double DEFAULT_TOP_P_THRESHOLD = 0.85D;
     private static final int MAX_CANDIDATE_ANSWERS = 10000;
     private static final int TOP_P_FETCH_SIZE = 120;
+    private static final String IK_INDEX_ANALYZER = "ik_max_word";
+    private static final String IK_SEARCH_ANALYZER = "ik_smart";
+    private static final String IK_TERM_ANALYZER = "ik_smart";
     private static final DecimalFormat SCORE_FORMAT = new DecimalFormat("0.0000");
 
     private final RestHighLevelClient client;
@@ -137,8 +143,9 @@ public class CourseQaSearchService {
             return response;
         }
 
+        List<String> keywordTerms = analyzeTextWithIk(normalizedKeyword);
         List<CourseQaSearchResultItem> rankedAnswers =
-                rerankAnswers(normalizedKeyword, questionHits, answerCandidates);
+                rerankAnswers(keywordTerms, questionHits, answerCandidates);
         List<CourseQaSearchResultItem> pagedItems =
                 paginateItems(rankedAnswers, response.getPageNo(), response.getPageSize());
         response.setReturnedAnswerCount(pagedItems.size());
@@ -220,6 +227,8 @@ public class CourseQaSearchService {
 
         int questionRank = 1;
         for (SearchHit searchHit : searchResponse.getHits().getHits()) {
+            // 统一把问题召回分归一化到 0~1，定义为：
+            // 当前问题 _score / 本次查询第一名问题 _score。
             double normalizedRecallScore =
                     searchHit.getScore() <= 0F ? 0D : searchHit.getScore() / normalizedMaxScore;
             Map<String, Object> sourceMap = searchHit.getSourceAsMap();
@@ -228,7 +237,7 @@ public class CourseQaSearchService {
             questionHit.categoryName = readString(sourceMap, "categoryName");
             questionHit.questionId = readString(sourceMap, "questionId");
             questionHit.questionText = readString(sourceMap, "questionText");
-            questionHit.questionTokens = readString(sourceMap, "questionTokens");
+            questionHit.questionTerms = readStringList(sourceMap, "questionTerms");
             questionHit.answerCount = readInteger(sourceMap, "answerCount");
             questionHit.questionRank = questionRank++;
             questionHit.normalizedRecallScore = normalizedRecallScore;
@@ -278,7 +287,7 @@ public class CourseQaSearchService {
     }
 
     private List<CourseQaSearchResultItem> rerankAnswers(
-            String keyword,
+            List<String> keywordTerms,
             List<QuestionRecallHit> questionHits,
             List<Map<String, Object>> answerCandidates) {
         Map<String, QuestionRecallHit> questionHitMap = new HashMap<String, QuestionRecallHit>();
@@ -295,14 +304,13 @@ public class CourseQaSearchService {
             }
 
             String answerText = readString(answerCandidate, "answerText");
-            String answerTokens = readString(answerCandidate, "answerTokens");
             CourseQaRankingUtil.ScoreBreakdown scoreBreakdown =
-                    CourseQaRankingUtil.scoreCandidate(
-                            keyword,
-                            questionHit.questionTokens,
-                            answerText,
-                            answerTokens,
-                            questionHit.normalizedRecallScore);
+                CourseQaRankingUtil.scoreCandidate(
+                    keywordTerms,
+                    questionHit.questionTerms,
+                    answerText,
+                    readStringList(answerCandidate, "answerTerms"),
+                    questionHit.normalizedRecallScore);
 
             CourseQaSearchResultItem resultItem = new CourseQaSearchResultItem();
             resultItem.setAnswerDocumentId(readString(answerCandidate, "answerDocumentId"));
@@ -319,14 +327,13 @@ public class CourseQaSearchService {
         }
 
         Collections.sort(
-                rankedItems,
-                Comparator.comparingDouble(CourseQaSearchResultItem::getTotalScore).reversed()
-                        .thenComparingInt(CourseQaSearchResultItem::getQuestionRank)
-                        .thenComparing(
-                                item ->
-                                        item.getAnswerDocumentId() == null
-                                                ? ""
-                                                : item.getAnswerDocumentId()));
+            rankedItems,
+            Comparator.comparingDouble(CourseQaSearchResultItem::getTotalScore).reversed()
+                .thenComparingInt(CourseQaSearchResultItem::getQuestionRank)
+                .thenComparing(
+                    item -> item.getAnswerDocumentId() == null ? "" : item.getAnswerDocumentId()
+                )
+            );
         return rankedItems;
     }
 
@@ -342,26 +349,22 @@ public class CourseQaSearchService {
     }
 
     private BoolQueryBuilder buildQuestionRecallQuery(String keyword) {
-        String tokensText = CourseQaTextUtil.buildSearchTokensText(keyword);
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
         boolQueryBuilder.should(QueryBuilders.matchPhraseQuery("questionText", keyword).boost(6F));
-        if (!tokensText.isEmpty()) {
-            MatchQueryBuilder strictTokenQuery = QueryBuilders.matchQuery("questionTokens", tokensText);
-            strictTokenQuery.operator(org.elasticsearch.index.query.Operator.AND);
-            strictTokenQuery.boost(5F);
+        // keyword 必须作为 Question 的连续子串
 
-            MatchQueryBuilder looseTokenQuery = QueryBuilders.matchQuery("questionTokens", tokensText);
-            looseTokenQuery.minimumShouldMatch("60%");
-            looseTokenQuery.boost(2F);
+        MatchQueryBuilder strictQuestionQuery = QueryBuilders.matchQuery("questionText", keyword);
+        strictQuestionQuery.operator(org.elasticsearch.index.query.Operator.AND);
+        strictQuestionQuery.boost(4F);
+        boolQueryBuilder.should(strictQuestionQuery);
+        // keyword 中每个分词都必须出现在 Question 中
 
-            boolQueryBuilder.should(strictTokenQuery);
-            boolQueryBuilder.should(looseTokenQuery);
-        } else {
-            boolQueryBuilder.should(
-                    QueryBuilders.matchQuery("questionText", keyword)
-                            .minimumShouldMatch("80%")
-                            .boost(2F));
-        }
+        MatchQueryBuilder looseQuestionQuery = QueryBuilders.matchQuery("questionText", keyword);
+        looseQuestionQuery.minimumShouldMatch("60%");
+        looseQuestionQuery.boost(2F);
+        boolQueryBuilder.should(looseQuestionQuery);
+        // keyword 中 60% 的分词出现在 Question 中
+
         boolQueryBuilder.minimumShouldMatch(1);
         return boolQueryBuilder;
     }
@@ -373,7 +376,7 @@ public class CourseQaSearchService {
         return Math.min(Math.max(topK * 4, 10), 80);
     }
 
-    private ImportBuildResult buildBulkRequests(CourseQaDataset dataset) {
+    private ImportBuildResult buildBulkRequests(CourseQaDataset dataset) throws IOException {
         BulkRequest questionRequest = new BulkRequest();
         questionRequest.timeout("2m");
 
@@ -395,7 +398,11 @@ public class CourseQaSearchService {
             IndexedQuestion indexedQuestion = questionMap.get(questionDocumentId);
             if (indexedQuestion == null) {
                 indexedQuestion =
-                        new IndexedQuestion(questionDocumentId, questionItem, dataset.getSourceName());
+                        new IndexedQuestion(
+                                questionDocumentId,
+                                questionItem,
+                                dataset.getSourceName(),
+                                analyzeTextWithIk(questionItem.getQuestionText()));
                 questionMap.put(questionDocumentId, indexedQuestion);
             } else {
                 duplicateQuestionCount++;
@@ -411,7 +418,11 @@ public class CourseQaSearchService {
                 }
 
                 Map<String, Object> answerDocument =
-                        buildAnswerDocument(questionDocumentId, answerDocumentId, questionItem, answerItem);
+                        buildAnswerDocument(
+                                questionDocumentId,
+                                answerDocumentId,
+                                questionItem,
+                                answerItem);
                 answerRequest.add(
                         new IndexRequest(EsIndexNames.COURSE_QA_ANSWER)
                                 .id(answerDocumentId)
@@ -445,9 +456,7 @@ public class CourseQaSearchService {
         document.put("categoryName", indexedQuestion.questionItem.getCategoryName());
         document.put("questionId", normalizeQuestionId(indexedQuestion.questionItem.getQuestionId()));
         document.put("questionText", indexedQuestion.questionItem.getQuestionText());
-        document.put(
-                "questionTokens",
-                CourseQaTextUtil.buildSearchTokensText(indexedQuestion.questionItem.getQuestionText()));
+        document.put("questionTerms", indexedQuestion.questionTerms);
         document.put("answerCount", indexedQuestion.answerCount);
         document.put("sourceName", indexedQuestion.sourceName);
         return document;
@@ -457,16 +466,16 @@ public class CourseQaSearchService {
             String questionDocumentId,
             String answerDocumentId,
             CourseQaQuestionItem questionItem,
-            CourseQaAnswerItem answerItem) {
+            CourseQaAnswerItem answerItem)
+            throws IOException {
         Map<String, Object> document = new LinkedHashMap<String, Object>();
         document.put("answerDocumentId", answerDocumentId);
         document.put("questionDocumentId", questionDocumentId);
         document.put("categoryName", questionItem.getCategoryName());
         document.put("questionId", normalizeQuestionId(questionItem.getQuestionId()));
         document.put("questionText", questionItem.getQuestionText());
-        document.put("questionTokens", CourseQaTextUtil.buildSearchTokensText(questionItem.getQuestionText()));
         document.put("answerText", answerItem.getAnswerText());
-        document.put("answerTokens", CourseQaTextUtil.buildSearchTokensText(answerItem.getAnswerText()));
+        document.put("answerTerms", analyzeTextWithIk(answerItem.getAnswerText()));
         document.put("answerLength", CourseQaTextUtil.effectiveLength(answerItem.getAnswerText()));
         document.put("answer_quality", answerItem.getAnswer_quality());
         return document;
@@ -497,8 +506,12 @@ public class CourseQaSearchService {
                         + "      \"questionDocumentId\": {\"type\": \"keyword\"},\n"
                         + "      \"categoryName\": {\"type\": \"keyword\"},\n"
                         + "      \"questionId\": {\"type\": \"keyword\"},\n"
-                        + "      \"questionText\": {\"type\": \"text\"},\n"
-                        + "      \"questionTokens\": {\"type\": \"text\"},\n"
+                        + "      \"questionText\": {\n"
+                        + "        \"type\": \"text\",\n"
+                        + "        \"analyzer\": \"" + IK_INDEX_ANALYZER + "\",\n"
+                        + "        \"search_analyzer\": \"" + IK_SEARCH_ANALYZER + "\"\n"
+                        + "      },\n"
+                        + "      \"questionTerms\": {\"type\": \"keyword\"},\n"
                         + "      \"answerCount\": {\"type\": \"integer\"},\n"
                         + "      \"sourceName\": {\"type\": \"keyword\"}\n"
                         + "    }\n"
@@ -523,10 +536,17 @@ public class CourseQaSearchService {
                         + "      \"questionDocumentId\": {\"type\": \"keyword\"},\n"
                         + "      \"categoryName\": {\"type\": \"keyword\"},\n"
                         + "      \"questionId\": {\"type\": \"keyword\"},\n"
-                        + "      \"questionText\": {\"type\": \"text\"},\n"
-                        + "      \"questionTokens\": {\"type\": \"text\"},\n"
-                        + "      \"answerText\": {\"type\": \"text\"},\n"
-                        + "      \"answerTokens\": {\"type\": \"text\"},\n"
+                        + "      \"questionText\": {\n"
+                        + "        \"type\": \"text\",\n"
+                        + "        \"analyzer\": \"" + IK_INDEX_ANALYZER + "\",\n"
+                        + "        \"search_analyzer\": \"" + IK_SEARCH_ANALYZER + "\"\n"
+                        + "      },\n"
+                        + "      \"answerText\": {\n"
+                        + "        \"type\": \"text\",\n"
+                        + "        \"analyzer\": \"" + IK_INDEX_ANALYZER + "\",\n"
+                        + "        \"search_analyzer\": \"" + IK_SEARCH_ANALYZER + "\"\n"
+                        + "      },\n"
+                        + "      \"answerTerms\": {\"type\": \"keyword\"},\n"
                         + "      \"answerLength\": {\"type\": \"integer\"},\n"
                         + "      \"answer_quality\": {\"type\": \"integer\"}\n"
                         + "    }\n"
@@ -595,6 +615,26 @@ public class CourseQaSearchService {
         return value == null ? "" : String.valueOf(value);
     }
 
+    private List<String> readStringList(Map<String, Object> sourceMap, String fieldName) {
+        Object value = sourceMap.get(fieldName);
+        if (!(value instanceof List)) {
+            return new ArrayList<String>();
+        }
+
+        List<?> rawList = (List<?>) value;
+        LinkedHashSet<String> normalizedValues = new LinkedHashSet<String>();
+        for (Object rawValue : rawList) {
+            if (rawValue == null) {
+                continue;
+            }
+            String normalizedValue = String.valueOf(rawValue).trim();
+            if (!normalizedValue.isEmpty()) {
+                normalizedValues.add(normalizedValue);
+            }
+        }
+        return new ArrayList<String>(normalizedValues);
+    }
+
     private int readInteger(Map<String, Object> sourceMap, String fieldName) {
         Object value = sourceMap.get(fieldName);
         if (value instanceof Number) {
@@ -629,17 +669,42 @@ public class CourseQaSearchService {
         return Double.parseDouble(SCORE_FORMAT.format(score));
     }
 
+    private List<String> analyzeTextWithIk(String text) throws IOException {
+        if (text == null || text.trim().isEmpty()) {
+            return new ArrayList<String>();
+        }
+
+        AnalyzeRequest analyzeRequest = AnalyzeRequest.withGlobalAnalyzer(IK_TERM_ANALYZER, text);
+        AnalyzeResponse analyzeResponse = client.indices().analyze(analyzeRequest, RequestOptions.DEFAULT);
+        LinkedHashSet<String> terms = new LinkedHashSet<String>();
+        for (AnalyzeResponse.AnalyzeToken token : analyzeResponse.getTokens()) {
+            if (token == null || token.getTerm() == null) {
+                continue;
+            }
+            String normalizedTerm = token.getTerm().trim().toLowerCase();
+            if (!normalizedTerm.isEmpty()) {
+                terms.add(normalizedTerm);
+            }
+        }
+        return new ArrayList<String>(terms);
+    }
+
     private static final class IndexedQuestion {
         private final String questionDocumentId;
         private final CourseQaQuestionItem questionItem;
         private final String sourceName;
+        private final List<String> questionTerms;
         private int answerCount;
 
         private IndexedQuestion(
-                String questionDocumentId, CourseQaQuestionItem questionItem, String sourceName) {
+                String questionDocumentId,
+                CourseQaQuestionItem questionItem,
+                String sourceName,
+                List<String> questionTerms) {
             this.questionDocumentId = questionDocumentId;
             this.questionItem = questionItem;
             this.sourceName = sourceName;
+            this.questionTerms = questionTerms;
             this.answerCount = 0;
         }
     }
@@ -673,7 +738,7 @@ public class CourseQaSearchService {
         private String categoryName;
         private String questionId;
         private String questionText;
-        private String questionTokens;
+        private List<String> questionTerms;
         private int answerCount;
         private int questionRank;
         private double normalizedRecallScore;

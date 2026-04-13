@@ -185,11 +185,14 @@ questionDocumentId + answerText
 - `categoryName`
 - `questionId`
 - `questionText`
-- `questionTokens`
+- `questionTerms`
 - `answerCount`
 - `sourceName`
 
-其中 `questionTokens` 不是简单原文，而是预处理后的字符 n-gram 检索字段。
+说明：
+
+- `questionText` 使用 ES 的 IK 中文分词器建索引。
+- `questionTerms` 是导入时调用 `ik_smart` 切出来的词项列表，主要给后续重排阶段做覆盖率计算。
 
 ### 6.2 答案索引 `course_qa_answer`
 
@@ -200,9 +203,8 @@ questionDocumentId + answerText
 - `categoryName`
 - `questionId`
 - `questionText`
-- `questionTokens`
 - `answerText`
-- `answerTokens`
+- `answerTerms`
 - `answerLength`
 
 注意：
@@ -216,31 +218,31 @@ questionDocumentId + answerText
 
 ---
 
-## 7. 为什么不用外部中文分词插件
+## 7. 为什么现在直接使用 IK 中文分词插件
 
-老师现场验收时，系统要尽量降低环境依赖。
+这次已经确认老师提供的 Elasticsearch 环境里预装了中文分词插件，项目目录里也能直接看到：
 
-如果检索强依赖 IK 等中文分词插件，会出现两个风险：
+- `./elastic-search/elasticsearch-7.6.1/plugins/ik`
+- `./elastic-search/elasticsearch-7.6.1/plugins/hanlp`
 
-1. 现场 ES 环境没有装插件。
-2. 插件版本和 ES 版本不一致。
+因此当前实现不再使用字符级 n-gram，而是直接使用 IK 分词。
 
-所以本次实现没有把可用性压在外部插件上，而是采用了更稳的办法：
+具体做法是：
 
-- 对问题和答案统一做文本规范化
-- 生成字符级 `2-gram / 3-gram`
-- 把这些 token 存进 `questionTokens / answerTokens`
-- 用 ES 的标准全文检索能力做召回
+- `questionText` / `answerText` 在索引 mapping 里直接声明 `ik_max_word` 分词器
+- 搜索时使用 `ik_smart` 作为 `search_analyzer`
+- 导入阶段再额外调用一次 `ik_smart`，把问题词项和答案词项保存到 `questionTerms / answerTerms`
 
-这样做的优点是：
+这样做的好处是：
 
-- 不依赖第三方中文分析器
-- 现场导入即可跑
-- 对中文课程问答场景仍然有不错的召回鲁棒性
+- 更符合中文检索的真实使用方式
+- 召回逻辑更容易向老师解释
+- 重排阶段的覆盖率计算也能直接基于中文词项，而不是字符片段
 
 核心代码位置：
 
 - `src/main/java/com/example/demo/utils/CourseQaTextUtil.java`
+- `src/main/java/com/example/demo/service/CourseQaSearchService.java`
 
 ---
 
@@ -283,15 +285,16 @@ POST /queryse
 问题召回查询由以下几部分组成：
 
 1. `questionText` 的 `match_phrase`
-2. `questionTokens` 的 `AND match`
-3. `questionTokens` 的 `minimum_should_match=60%`
-4. 对召回结果再按“相对第一名分数阈值”做截断
+2. `questionText` 的 `AND match`
+3. `questionText` 的 `minimum_should_match=60%`
+4. ES 返回 `_score` 后，再在 Java 中归一化成 `questionRecallScore`
+5. 最后再套 `top_k` 或 `top_p` 策略裁剪问题集合
 
 这样做的目的：
 
 - 既照顾原问题的整句匹配
-- 又兼顾近似问法下的局部 token 命中
-- 避免像以前那样把几乎全库问题都召回出来
+- 又兼顾近似问法下的关键词命中
+- 并且利用 IK 分词让“神经网络 / 自然语言处理 / 监督学习”这类中文术语直接按词匹配
 
 核心代码位置：
 
@@ -335,19 +338,14 @@ POST /queryse
 
 ### 10.2 排序特征
 
-当前重排只保留三类可以直接讲清楚的特征：
+当前最终排序只保留两类真正参与总分的特征：
 
 #### A. 问题召回分
 
 - 这是 ES 在“问题召回阶段”给出的相对得分
 - 用来保证答案主要来自真正相关的问题
 
-#### B. 问题覆盖率
-
-- 统计查询里的关键词有多少覆盖到了源问题
-- 用来补强“问题和用户输入到底像不像”
-
-#### C. 答案重排分
+#### B. 答案重排分
 
 - 查询关键词在答案里的覆盖率
 - 答案长度分
@@ -362,7 +360,7 @@ POST /queryse
 代码里现在采用的是“问题召回分 + 答案重排分”的两段式：
 
 ```text
-总分 = 0.60 * 问题召回分 + 0.15 * 问题覆盖率 + 0.25 * 答案重排分
+总分 = 0.70 * 问题召回分 + 0.30 * 答案重排分
 ```
 
 其中：
@@ -377,6 +375,7 @@ POST /queryse
 
 - 先保证答案来自相对正确的问题簇
 - 再在同一问题簇内把“更贴题、信息更完整”的答案排到前面
+- `问题覆盖率` 仍然会保留为调试指标，但不再重复参与最终总分
 
 核心代码位置：
 
@@ -457,7 +456,7 @@ POST /queryse
 - `CourseQaDocumentIdUtil`
   - 生成稳定文档 ID
 - `CourseQaTextUtil`
-  - 文本规范化与 n-gram token 构建
+  - 文本长度与词项集合计算
 - `CourseQaRankingUtil`
   - 候选答案重排
 
@@ -558,14 +557,14 @@ http://localhost:8080/writeQA?filePath=/你的/本地/路径.json
 
 1. 解析数据时虽然会读到这个字段，也会保存在答案索引里供前端展示，但排序逻辑不会读取它。
 2. 排序服务只接触查询文本、问题文本和答案文本。
-3. 重排公式完全基于问题召回分、关键词覆盖率和答案长度这几类文本特征。
+3. 重排公式完全基于问题召回分，以及由答案关键词覆盖率和答案长度组成的答案重排分。
 4. 接口返回给前端的 `answer_quality` 只用于人工评估展示，不参与排序。
 
 如果老师问“为什么不用现成的中文插件或预训练模型”，可以回答：
 
 1. 现场验收优先保证稳定可运行。
-2. 插件和模型会引入额外环境依赖。
-3. 当前方案不依赖外部中文分词插件，也不依赖联网下载模型。
+2. 老师提供的 ES 环境已经预装 IK，所以中文分词能力是现成可用的。
+3. 当前方案直接使用 IK 做中文切词，不需要联网下载额外模型。
 4. 在课程问答这种文本相对规整的场景里，问题召回 + 答案重排已经能给出比较稳定、可解释的结果。
 
 ---
