@@ -9,6 +9,11 @@ import java.util.Set;
  */
 public final class CourseQaRankingUtil {
 
+    public static final double TOTAL_QUESTION_RECALL_WEIGHT = 0.50D;
+    public static final double TOTAL_ANSWER_RERANK_WEIGHT = 0.50D;
+    public static final double ANSWER_COVERAGE_WEIGHT = 0.30D;
+    public static final double ANSWER_LENGTH_WEIGHT = 0.70D;
+
     private CourseQaRankingUtil() {
         // 工具类不需要实例化。
     }
@@ -33,13 +38,15 @@ public final class CourseQaRankingUtil {
         // 答案长度分，min(answerLength, 120) / 120
         double answerLengthScore = buildAnswerLengthScore(answerText);
 
-        double answerRerankScore = 0.30D * answerCoverage + 0.70D * answerLengthScore;
+        double answerRerankScore =
+                ANSWER_COVERAGE_WEIGHT * answerCoverage
+                        + ANSWER_LENGTH_WEIGHT * answerLengthScore;
         // 最终排序只看两段：
         // 1. 问题召回分：当前问题 _score / 本次查询第一名问题 _score
         // 2. 答案重排分：答案关键词覆盖率 + 答案长度
         double totalScore = 0
-            + 0.50D * normalizedQuestionRecallScore
-            + 0.50D * answerRerankScore;
+            + TOTAL_QUESTION_RECALL_WEIGHT * normalizedQuestionRecallScore
+            + TOTAL_ANSWER_RERANK_WEIGHT * answerRerankScore;
         return new ScoreBreakdown(
             totalScore,
             normalizedQuestionRecallScore,

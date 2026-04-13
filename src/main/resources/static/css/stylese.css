@@ -991,9 +991,15 @@ i.f-ico-triangle-mb {
     font-size: 12px
 }
 
-.qa-result-foot span {
+.qa-score-row {
+    margin-bottom: 6px;
+    line-height: 1.8
+}
+
+.qa-score-row span {
     display: inline-block;
-    margin-right: 14px
+    margin-right: 14px;
+    white-space: normal
 }
 
 .qa-detail-link {

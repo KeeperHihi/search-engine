@@ -97,13 +97,37 @@
         <p class="qa-answer-preview">{{ item.answerText }}</p>
 
         <div class="qa-result-foot">
-          <span>总分 {{ formatScore(item.totalScore) }}</span>
-          <span>问题召回分 {{ formatScore(item.questionRecallScore) }}</span>
-          <span>答案重排分 {{ formatScore(item.answerRerankScore) }}</span>
-          <span>答案覆盖度得分 {{ formatScore(item.answerCoverage) }}</span>
-          <span>答案长度得分 {{ formatScore(item.answerLengthScore) }}</span>
-          <span>answer_quality {{ formatQuality(item.answer_quality) }}</span>
-          <a class="qa-detail-link" @click.prevent="openAnswer(item.answerDocumentId)">查看详情</a>
+          <div class="qa-score-row">
+            <span>x={{ formatScore(item.questionPhraseScore) }}</span>
+            <span>y={{ formatScore(item.questionAndScore) }}</span>
+            <span>z={{ formatScore(item.questionLooseScore) }}</span>
+            <span>
+              问题召回分 = ({{ formatScore(item.questionPhraseScore) }} * {{ formatWeight(item.questionPhraseBoost) }}
+              + {{ formatScore(item.questionAndScore) }} * {{ formatWeight(item.questionAndBoost) }}
+              + {{ formatScore(item.questionLooseScore) }} * {{ formatWeight(item.questionLooseBoost) }}) / {{ formatScore(item.questionRecallMaxScore) }}
+              = {{ formatScore(item.questionRecallScore) }}
+            </span>
+          </div>
+          <div class="qa-score-row">
+            <span>答案覆盖度得分 {{ formatScore(item.answerCoverage) }}</span>
+            <span>答案长度得分 {{ formatScore(item.answerLengthScore) }}</span>
+            <span>
+              答案重排分 = {{ formatScore(item.answerCoverage) }} * {{ formatWeight(item.answerCoverageWeight) }}
+              + {{ formatScore(item.answerLengthScore) }} * {{ formatWeight(item.answerLengthWeight) }}
+              = {{ formatScore(item.answerRerankScore) }}
+            </span>
+          </div>
+          <div class="qa-score-row">
+            <span>
+              总分 = {{ formatScore(item.questionRecallScore) }} * {{ formatWeight(item.totalQuestionRecallWeight) }}
+              + {{ formatScore(item.answerRerankScore) }} * {{ formatWeight(item.totalAnswerRerankWeight) }}
+              = {{ formatScore(item.totalScore) }}
+            </span>
+          </div>
+          <div class="qa-score-row">
+            <span>answer_quality {{ formatQuality(item.answer_quality) }}</span>
+            <a class="qa-detail-link" @click.prevent="openAnswer(item.answerDocumentId)">查看详情</a>
+          </div>
         </div>
       </div>
     </div>
@@ -115,7 +139,7 @@
 <script th:src="@{/js/axios.min.js}"></script>
 <script type="text/javascript">
   var SEARCH_STATE_KEY = "courseQaSearchState";
-  var SEARCH_STATE_VERSION = 3;
+  var SEARCH_STATE_VERSION = 4;
   var vm = new Vue({
     el:'#app',
     data:{
@@ -299,6 +323,12 @@
           return "-";
         }
         return Number(score).toFixed(4);
+      },
+      formatWeight(weight){
+        if(weight === undefined || weight === null || weight === ""){
+          return "-";
+        }
+        return Number(weight).toFixed(2);
       },
       formatQuality(answer_quality){
         if(answer_quality === undefined || answer_quality === null || answer_quality === ""){

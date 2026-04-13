@@ -45,6 +45,7 @@ import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.MatchQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
@@ -75,6 +76,9 @@ public class CourseQaSearchService {
     private static final String IK_SEARCH_ANALYZER = "ik_smart";
     private static final String IK_TERM_ANALYZER = "ik_smart";
     private static final DecimalFormat SCORE_FORMAT = new DecimalFormat("0.0000");
+    private static final double QUESTION_PHRASE_BOOST = 6D;
+    private static final double QUESTION_AND_BOOST = 4D;
+    private static final double QUESTION_LOOSE_BOOST = 2D;
 
     private final RestHighLevelClient client;
     private final CourseQaDatasetParser datasetParser;
@@ -242,15 +246,8 @@ public class CourseQaSearchService {
 
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
         List<QuestionRecallHit> questionHits = new ArrayList<QuestionRecallHit>();
-        float maxScore = searchResponse.getHits().getMaxScore();
-        float normalizedMaxScore = maxScore <= 0F ? 1F : maxScore;
-
-        int questionRank = 1;
+        int originalRank = 1;
         for (SearchHit searchHit : searchResponse.getHits().getHits()) {
-            // 统一把问题召回分归一化到 0~1，定义为：
-            // 当前问题 _score / 本次查询第一名问题 _score。
-            double normalizedRecallScore =
-                    searchHit.getScore() <= 0F ? 0D : searchHit.getScore() / normalizedMaxScore;
             Map<String, Object> sourceMap = searchHit.getSourceAsMap();
             QuestionRecallHit questionHit = new QuestionRecallHit();
             questionHit.questionDocumentId = searchHit.getId();
@@ -259,21 +256,40 @@ public class CourseQaSearchService {
             questionHit.questionText = readString(sourceMap, "questionText");
             questionHit.questionTerms = readStringList(sourceMap, "questionTerms");
             questionHit.answerCount = readInteger(sourceMap, "answerCount");
-            questionHit.questionRank = questionRank++;
-            questionHit.normalizedRecallScore = normalizedRecallScore;
+            questionHit.originalRank = originalRank++;
+            questionHits.add(questionHit);
+        }
+        if (questionHits.isEmpty()) {
+            return questionHits;
+        }
+
+        enrichQuestionRecallScores(keyword, questionHits);
+        Collections.sort(
+                questionHits,
+                Comparator.comparingDouble((QuestionRecallHit hit) -> hit.weightedRecallScore)
+                        .reversed()
+                        .thenComparingInt(hit -> hit.originalRank));
+
+        List<QuestionRecallHit> selectedHits = new ArrayList<QuestionRecallHit>();
+        for (QuestionRecallHit questionHit : questionHits) {
             if (RECALL_STRATEGY_TOP_P.equals(recallStrategy)) {
-                if (normalizedRecallScore >= topPThreshold) {
-                    questionHits.add(questionHit);
+                if (questionHit.normalizedRecallScore >= topPThreshold) {
+                    selectedHits.add(questionHit);
                 }
                 continue;
             }
 
-            questionHits.add(questionHit);
-            if (questionHits.size() >= topK) {
+            selectedHits.add(questionHit);
+            if (selectedHits.size() >= topK) {
                 break;
             }
         }
-        return questionHits;
+
+        int questionRank = 1;
+        for (QuestionRecallHit selectedHit : selectedHits) {
+            selectedHit.questionRank = questionRank++;
+        }
+        return selectedHits;
     }
 
     private List<Map<String, Object>> recallAnswers(List<QuestionRecallHit> questionHits)
@@ -344,6 +360,27 @@ public class CourseQaSearchService {
             resultItem.setAnswerRerankScore(roundScore(scoreBreakdown.getAnswerRerankScore()));
             resultItem.setAnswerCoverage(roundScore(scoreBreakdown.getAnswerCoverage()));
             resultItem.setAnswerLengthScore(roundScore(scoreBreakdown.getAnswerLengthScore()));
+            resultItem.setQuestionRecallContribution(
+                    roundScore(
+                            scoreBreakdown.getQuestionRecallScore()
+                                    * CourseQaRankingUtil.TOTAL_QUESTION_RECALL_WEIGHT));
+            resultItem.setAnswerRerankContribution(
+                    roundScore(
+                            scoreBreakdown.getAnswerRerankScore()
+                                    * CourseQaRankingUtil.TOTAL_ANSWER_RERANK_WEIGHT));
+            resultItem.setTotalQuestionRecallWeight(
+                    CourseQaRankingUtil.TOTAL_QUESTION_RECALL_WEIGHT);
+            resultItem.setTotalAnswerRerankWeight(
+                    CourseQaRankingUtil.TOTAL_ANSWER_RERANK_WEIGHT);
+            resultItem.setAnswerCoverageWeight(CourseQaRankingUtil.ANSWER_COVERAGE_WEIGHT);
+            resultItem.setAnswerLengthWeight(CourseQaRankingUtil.ANSWER_LENGTH_WEIGHT);
+            resultItem.setQuestionPhraseScore(roundScore(questionHit.phraseScore));
+            resultItem.setQuestionAndScore(roundScore(questionHit.andScore));
+            resultItem.setQuestionLooseScore(roundScore(questionHit.looseScore));
+            resultItem.setQuestionPhraseBoost(QUESTION_PHRASE_BOOST);
+            resultItem.setQuestionAndBoost(QUESTION_AND_BOOST);
+            resultItem.setQuestionLooseBoost(QUESTION_LOOSE_BOOST);
+            resultItem.setQuestionRecallMaxScore(roundScore(questionHit.maxWeightedRecallScore));
             resultItem.setTotalScore(roundScore(scoreBreakdown.getTotalScore()));
             rankedItems.add(resultItem);
         }
@@ -359,6 +396,76 @@ public class CourseQaSearchService {
         return rankedItems;
     }
 
+    private void enrichQuestionRecallScores(String keyword, List<QuestionRecallHit> questionHits)
+            throws IOException {
+        Map<String, Double> phraseScoreMap =
+                fetchQuestionComponentScores(
+                        questionHits, buildPhraseQuestionRecallQuery(keyword, 1F));
+        Map<String, Double> andScoreMap =
+                fetchQuestionComponentScores(questionHits, buildAndQuestionRecallQuery(keyword, 1F));
+        Map<String, Double> looseScoreMap =
+                fetchQuestionComponentScores(
+                        questionHits, buildLooseQuestionRecallQuery(keyword, 1F));
+
+        double maxWeightedRecallScore = 0D;
+        for (QuestionRecallHit questionHit : questionHits) {
+            questionHit.phraseScore = getScoreOrZero(phraseScoreMap, questionHit.questionDocumentId);
+            questionHit.andScore = getScoreOrZero(andScoreMap, questionHit.questionDocumentId);
+            questionHit.looseScore = getScoreOrZero(looseScoreMap, questionHit.questionDocumentId);
+            questionHit.weightedRecallScore =
+                    questionHit.phraseScore * QUESTION_PHRASE_BOOST
+                            + questionHit.andScore * QUESTION_AND_BOOST
+                            + questionHit.looseScore * QUESTION_LOOSE_BOOST;
+            maxWeightedRecallScore = Math.max(maxWeightedRecallScore, questionHit.weightedRecallScore);
+        }
+
+        double normalizedMaxScore = maxWeightedRecallScore <= 0D ? 1D : maxWeightedRecallScore;
+        for (QuestionRecallHit questionHit : questionHits) {
+            questionHit.maxWeightedRecallScore = normalizedMaxScore;
+            questionHit.normalizedRecallScore =
+                    questionHit.weightedRecallScore <= 0D
+                            ? 0D
+                            : questionHit.weightedRecallScore / normalizedMaxScore;
+        }
+    }
+
+    private Map<String, Double> fetchQuestionComponentScores(
+            List<QuestionRecallHit> questionHits, QueryBuilder componentQuery) throws IOException {
+        Map<String, Double> componentScoreMap = new HashMap<String, Double>();
+        if (questionHits == null || questionHits.isEmpty()) {
+            return componentScoreMap;
+        }
+
+        List<String> questionDocumentIds = new ArrayList<String>();
+        for (QuestionRecallHit questionHit : questionHits) {
+            questionDocumentIds.add(questionHit.questionDocumentId);
+        }
+
+        SearchRequest searchRequest = new SearchRequest(EsIndexNames.COURSE_QA_QUESTION);
+        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
+        sourceBuilder.from(0);
+        sourceBuilder.size(questionDocumentIds.size());
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.filter(
+                QueryBuilders.idsQuery().addIds(questionDocumentIds.toArray(new String[0])));
+        boolQueryBuilder.must(componentQuery);
+        sourceBuilder.query(boolQueryBuilder);
+        sourceBuilder.fetchSource(false);
+        searchRequest.source(sourceBuilder);
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        for (SearchHit searchHit : searchResponse.getHits().getHits()) {
+            componentScoreMap.put(searchHit.getId(), (double) searchHit.getScore());
+        }
+        return componentScoreMap;
+    }
+
+    private double getScoreOrZero(Map<String, Double> scoreMap, String documentId) {
+        Double score = scoreMap.get(documentId);
+        return score == null ? 0D : score;
+    }
+
     private List<CourseQaSearchResultItem> paginateItems(
             List<CourseQaSearchResultItem> items, int pageNo, int pageSize) {
         int fromIndex = (pageNo - 1) * pageSize;
@@ -372,23 +479,38 @@ public class CourseQaSearchService {
 
     private BoolQueryBuilder buildQuestionRecallQuery(String keyword) {
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
-        boolQueryBuilder.should(QueryBuilders.matchPhraseQuery("questionText", keyword).boost(6F));
+        boolQueryBuilder.should(
+                buildPhraseQuestionRecallQuery(keyword, (float) QUESTION_PHRASE_BOOST));
         // keyword 必须作为 Question 的连续子串
 
-        MatchQueryBuilder strictQuestionQuery = QueryBuilders.matchQuery("questionText", keyword);
-        strictQuestionQuery.operator(org.elasticsearch.index.query.Operator.AND);
-        strictQuestionQuery.boost(4F);
-        boolQueryBuilder.should(strictQuestionQuery);
+        boolQueryBuilder.should(
+                buildAndQuestionRecallQuery(keyword, (float) QUESTION_AND_BOOST));
         // keyword 中每个分词都必须出现在 Question 中
 
-        MatchQueryBuilder looseQuestionQuery = QueryBuilders.matchQuery("questionText", keyword);
-        looseQuestionQuery.minimumShouldMatch("60%");
-        looseQuestionQuery.boost(2F);
-        boolQueryBuilder.should(looseQuestionQuery);
+        boolQueryBuilder.should(
+                buildLooseQuestionRecallQuery(keyword, (float) QUESTION_LOOSE_BOOST));
         // keyword 中 60% 的分词出现在 Question 中
 
         boolQueryBuilder.minimumShouldMatch(1);
         return boolQueryBuilder;
+    }
+
+    private QueryBuilder buildPhraseQuestionRecallQuery(String keyword, float boost) {
+        return QueryBuilders.matchPhraseQuery("questionText", keyword).boost(boost);
+    }
+
+    private QueryBuilder buildAndQuestionRecallQuery(String keyword, float boost) {
+        MatchQueryBuilder strictQuestionQuery = QueryBuilders.matchQuery("questionText", keyword);
+        strictQuestionQuery.operator(org.elasticsearch.index.query.Operator.AND);
+        strictQuestionQuery.boost(boost);
+        return strictQuestionQuery;
+    }
+
+    private QueryBuilder buildLooseQuestionRecallQuery(String keyword, float boost) {
+        MatchQueryBuilder looseQuestionQuery = QueryBuilders.matchQuery("questionText", keyword);
+        looseQuestionQuery.minimumShouldMatch("60%");
+        looseQuestionQuery.boost(boost);
+        return looseQuestionQuery;
     }
 
     private int resolveQuestionFetchSize(String recallStrategy, int topK) {
@@ -762,7 +884,13 @@ public class CourseQaSearchService {
         private String questionText;
         private List<String> questionTerms;
         private int answerCount;
+        private int originalRank;
         private int questionRank;
         private double normalizedRecallScore;
+        private double phraseScore;
+        private double andScore;
+        private double looseScore;
+        private double weightedRecallScore;
+        private double maxWeightedRecallScore;
     }
 }

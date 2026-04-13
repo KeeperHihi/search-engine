@@ -23,4 +23,17 @@ public class CourseQaSearchResultItem {
     private double answerRerankScore;
     private double answerCoverage;
     private double answerLengthScore;
+    private double questionRecallContribution;
+    private double answerRerankContribution;
+    private double totalQuestionRecallWeight;
+    private double totalAnswerRerankWeight;
+    private double answerCoverageWeight;
+    private double answerLengthWeight;
+    private double questionPhraseScore;
+    private double questionAndScore;
+    private double questionLooseScore;
+    private double questionPhraseBoost;
+    private double questionAndBoost;
+    private double questionLooseBoost;
+    private double questionRecallMaxScore;
 }
