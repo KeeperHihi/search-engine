@@ -33,13 +33,13 @@ public final class CourseQaRankingUtil {
         // 答案长度分，min(answerLength, 120) / 120
         double answerLengthScore = buildAnswerLengthScore(answerText);
 
-        double answerRerankScore = 0.70D * answerCoverage + 0.30D * answerLengthScore;
+        double answerRerankScore = 0.30D * answerCoverage + 0.70D * answerLengthScore;
         // 最终排序只看两段：
         // 1. 问题召回分：当前问题 _score / 本次查询第一名问题 _score
         // 2. 答案重排分：答案关键词覆盖率 + 答案长度
         double totalScore = 0
-            + 0.70D * normalizedQuestionRecallScore
-            + 0.30D * answerRerankScore;
+            + 0.50D * normalizedQuestionRecallScore
+            + 0.50D * answerRerankScore;
         return new ScoreBreakdown(
             totalScore,
             normalizedQuestionRecallScore,
