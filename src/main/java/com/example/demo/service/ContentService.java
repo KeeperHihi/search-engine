@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
@@ -23,6 +24,8 @@ import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.client.indices.CreateIndexRequest;
+import org.elasticsearch.client.indices.GetIndexRequest;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilders;
@@ -59,6 +62,7 @@ public class ContentService {
     // 手动把本地商品文件导入 ES，便于离线样例快速重建数据。
     public boolean writeJDContent() throws IOException {
         List<Content> goods = jsonParseUtil.parseJDJson(jdFilePath);
+        rebuildJdIndex();
         return writeGoodsToEs(goods);
     }
 
@@ -168,6 +172,47 @@ public class ContentService {
             indexRequest.id(documentId);
         }
         return indexRequest.source(JSON.toJSONString(document), XContentType.JSON);
+    }
+
+    private void rebuildJdIndex() throws IOException {
+        deleteIndexIfExists(EsIndexNames.JD_DATA);
+        createJdIndex();
+    }
+
+    private void deleteIndexIfExists(String indexName) throws IOException {
+        if (!indexExists(indexName)) {
+            return;
+        }
+
+        DeleteIndexRequest deleteIndexRequest = new DeleteIndexRequest(indexName);
+        client.indices().delete(deleteIndexRequest, RequestOptions.DEFAULT);
+    }
+
+    private boolean indexExists(String indexName) throws IOException {
+        GetIndexRequest getIndexRequest = new GetIndexRequest(indexName);
+        return client.indices().exists(getIndexRequest, RequestOptions.DEFAULT);
+    }
+
+    private void createJdIndex() throws IOException {
+        CreateIndexRequest request = new CreateIndexRequest(EsIndexNames.JD_DATA);
+        request.source(
+                "{\n"
+                        + "  \"mappings\": {\n"
+                        + "    \"properties\": {\n"
+                        + "      \"title\": {\n"
+                        + "        \"type\": \"text\",\n"
+                        + "        \"analyzer\": \"ik_max_word\",\n"
+                        + "        \"search_analyzer\": \"ik_smart\"\n"
+                        + "      },\n"
+                        + "      \"img\": {\"type\": \"keyword\"},\n"
+                        + "      \"price\": {\"type\": \"keyword\"},\n"
+                        + "      \"sku\": {\"type\": \"keyword\"},\n"
+                        + "      \"itemUrl\": {\"type\": \"keyword\"}\n"
+                        + "    }\n"
+                        + "  }\n"
+                        + "}",
+                XContentType.JSON);
+        client.indices().create(request, RequestOptions.DEFAULT);
     }
 
     private List<Map<String, Object>> extractUniqueGoods(SearchResponse searchResponse) {
