@@ -29,7 +29,6 @@ public final class CourseQaRankingUtil {
         Set<String> questionTermSet = CourseQaTextUtil.toTermSet(questionTerms);
 
         // 计算 |queryTerms ∩ questionTerms| / |queryTerms|。
-        // 这个值保留给调试和答辩解释使用，不再重复计入最终总分。
         double questionCoverage = CourseQaTextUtil.calculateContainment(keywordTermSet, questionTermSet);
 
         // 计算 |queryTerms ∩ answerTerms| / |queryTerms|

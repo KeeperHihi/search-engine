@@ -10,6 +10,7 @@ import com.example.demo.pojo.courseqa.CourseQaSearchResponse;
 import com.example.demo.pojo.courseqa.CourseQaSearchResultItem;
 import com.example.demo.utils.CourseQaDatasetParser;
 import com.example.demo.utils.CourseQaDocumentIdUtil;
+import com.example.demo.utils.CourseQaLogicQueryUtil;
 import com.example.demo.utils.CourseQaRankingUtil;
 import com.example.demo.utils.CourseQaTextUtil;
 import java.io.IOException;
@@ -110,6 +111,8 @@ public class CourseQaSearchService {
             double topPThreshold)
             throws IOException {
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        CourseQaLogicQueryUtil.ParsedQuery parsedQuery =
+                CourseQaLogicQueryUtil.parse(normalizedKeyword);
         String normalizedRecallStrategy = normalizeRecallStrategy(recallStrategy);
         CourseQaSearchResponse response = new CourseQaSearchResponse();
         response.setKeyword(normalizedKeyword);
@@ -119,7 +122,7 @@ public class CourseQaSearchService {
         response.setPageNo(normalizePageNo(pageNo));
         response.setPageSize(normalizePageSize(pageSize));
 
-        if (normalizedKeyword.isEmpty()) {
+        if (!parsedQuery.hasRecallKeyword()) {
             response.setItems(new ArrayList<CourseQaSearchResultItem>());
             return response;
         }
@@ -132,7 +135,7 @@ public class CourseQaSearchService {
 
         List<QuestionRecallHit> questionHits =
                 recallQuestions(
-                        normalizedKeyword,
+                        parsedQuery,
                         response.getRecallStrategy(),
                         response.getTopK(),
                         response.getTopPThreshold());
@@ -143,16 +146,18 @@ public class CourseQaSearchService {
         }
 
         List<Map<String, Object>> answerCandidates = recallAnswers(questionHits);
-        response.setRecalledAnswerCount(answerCandidates.size());
-        if (answerCandidates.isEmpty()) {
+        List<Map<String, Object>> filteredAnswerCandidates =
+                filterAnswerCandidatesByLogic(answerCandidates, parsedQuery);
+        response.setRecalledAnswerCount(filteredAnswerCandidates.size());
+        if (filteredAnswerCandidates.isEmpty()) {
             response.setItems(new ArrayList<CourseQaSearchResultItem>());
             return response;
         }
 
-        List<String> keywordTerms = analyzeTextWithIk(normalizedKeyword);
+        List<String> keywordTerms = analyzeTextWithIk(parsedQuery.getRecallKeyword());
         response.setKeywordTerms(keywordTerms);
         List<CourseQaSearchResultItem> rankedAnswers =
-                rerankAnswers(keywordTerms, questionHits, answerCandidates);
+                rerankAnswers(keywordTerms, questionHits, filteredAnswerCandidates);
         List<CourseQaSearchResultItem> pagedItems =
                 paginateItems(rankedAnswers, response.getPageNo(), response.getPageSize());
         response.setReturnedAnswerCount(pagedItems.size());
@@ -236,14 +241,17 @@ public class CourseQaSearchService {
     }
 
     private List<QuestionRecallHit> recallQuestions(
-            String keyword, String recallStrategy, int topK, double topPThreshold)
+            CourseQaLogicQueryUtil.ParsedQuery parsedQuery,
+            String recallStrategy,
+            int topK,
+            double topPThreshold)
             throws IOException {
         SearchRequest searchRequest = new SearchRequest(EsIndexNames.COURSE_QA_QUESTION);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
         sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
         sourceBuilder.from(0);
         sourceBuilder.size(resolveQuestionFetchSize(recallStrategy, topK));
-        sourceBuilder.query(buildQuestionRecallQuery(keyword));
+        sourceBuilder.query(buildQuestionRecallQuery(parsedQuery.getRecallKeyword()));
         searchRequest.source(sourceBuilder);
 
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
@@ -265,7 +273,7 @@ public class CourseQaSearchService {
             return questionHits;
         }
 
-        enrichQuestionRecallScores(keyword, questionHits);
+        enrichQuestionRecallScores(parsedQuery.getRecallKeyword(), questionHits);
         Collections.sort(
                 questionHits,
                 Comparator.comparingDouble((QuestionRecallHit hit) -> hit.weightedRecallScore)
@@ -274,6 +282,9 @@ public class CourseQaSearchService {
 
         List<QuestionRecallHit> selectedHits = new ArrayList<QuestionRecallHit>();
         for (QuestionRecallHit questionHit : questionHits) {
+            if (!CourseQaLogicQueryUtil.allowsQuestion(questionHit.questionText, parsedQuery)) {
+                continue;
+            }
             if (RECALL_STRATEGY_TOP_P.equals(recallStrategy)) {
                 if (questionHit.normalizedRecallScore >= topPThreshold) {
                     selectedHits.add(questionHit);
@@ -292,6 +303,22 @@ public class CourseQaSearchService {
             selectedHit.questionRank = questionRank++;
         }
         return selectedHits;
+    }
+
+    private List<Map<String, Object>> filterAnswerCandidatesByLogic(
+            List<Map<String, Object>> answerCandidates,
+            CourseQaLogicQueryUtil.ParsedQuery parsedQuery) {
+        List<Map<String, Object>> filteredCandidates = new ArrayList<Map<String, Object>>();
+        for (Map<String, Object> answerCandidate : answerCandidates) {
+            if (!CourseQaLogicQueryUtil.matchesAnswerCandidate(
+                    readString(answerCandidate, "questionText"),
+                    readString(answerCandidate, "answerText"),
+                    parsedQuery)) {
+                continue;
+            }
+            filteredCandidates.add(answerCandidate);
+        }
+        return filteredCandidates;
     }
 
     private List<Map<String, Object>> recallAnswers(List<QuestionRecallHit> questionHits)
