@@ -97,33 +97,73 @@
         <p class="qa-answer-preview">{{ item.answerText }}</p>
 
         <div class="qa-result-foot">
+          <div class="qa-action-row">
+            <div class="qa-counter-group">
+              <span class="qa-counter-label">点赞量</span>
+              <button
+                type="button"
+                class="qa-counter-btn"
+                :disabled="loading || isQuestionSaving(item.questionDocumentId)"
+                @click="adjustMetric(item, 'likeCount', -1)">-</button>
+              <span class="qa-counter-value">{{ formatCount(item.likeCount) }}</span>
+              <button
+                type="button"
+                class="qa-counter-btn"
+                :disabled="loading || isQuestionSaving(item.questionDocumentId)"
+                @click="adjustMetric(item, 'likeCount', 1)">+</button>
+            </div>
+            <div class="qa-counter-group">
+              <span class="qa-counter-label">点击量</span>
+              <button
+                type="button"
+                class="qa-counter-btn"
+                :disabled="loading || isQuestionSaving(item.questionDocumentId)"
+                @click="adjustMetric(item, 'clickCount', -1)">-</button>
+              <span class="qa-counter-value">{{ formatCount(item.clickCount) }}</span>
+              <button
+                type="button"
+                class="qa-counter-btn"
+                :disabled="loading || isQuestionSaving(item.questionDocumentId)"
+                @click="adjustMetric(item, 'clickCount', 1)">+</button>
+            </div>
+            <button
+              type="button"
+              class="qa-save-btn"
+              :disabled="loading || isQuestionSaving(item.questionDocumentId) || !isQuestionDirty(item.questionDocumentId)"
+              @click="saveQuestionMetrics(item.questionDocumentId)">
+              {{ isQuestionSaving(item.questionDocumentId) ? '保存中...' : '保存本题指标' }}
+            </button>
+          </div>
           <div class="qa-score-row">
-            <span>x={{ formatScore(item.questionPhraseScore) }}</span>
-            <span>y={{ formatScore(item.questionAndScore) }}</span>
-            <span>z={{ formatScore(item.questionLooseScore) }}</span>
             <span>
-              问题召回分 = ({{ formatScore(item.questionPhraseScore) }} * {{ formatWeight(item.questionPhraseBoost) }}
-              + {{ formatScore(item.questionAndScore) }} * {{ formatWeight(item.questionAndBoost) }}
-              + {{ formatScore(item.questionLooseScore) }} * {{ formatWeight(item.questionLooseBoost) }}) / {{ formatScore(item.questionRecallMaxScore) }}
+              问题召回分 = {{ formatScore(item.questionRecallRawScore) }} / {{ formatScore(item.questionRecallNormalizationBase) }}
               = {{ formatScore(item.questionRecallScore) }}
             </span>
           </div>
           <div class="qa-score-row">
             <span>
-              答案 BM25 原始分 {{ formatScore(item.answerBm25RawScore) }}
+              答案BM25得分 = {{ formatScore(item.answerBm25RawScore) }} / {{ formatScore(item.answerBm25NormalizationBase) }}
+              = {{ formatScore(item.answerBm25Score) }}
             </span>
+          </div>
+          <div class="qa-score-row">
             <span>
-              归一化基准 {{ formatScore(item.answerBm25NormalizationBase) }}
+              点赞量得分 = {{ formatCount(item.likeCount) }} / {{ formatCount(item.likeNormalizationBase) }}
+              = {{ formatScore(item.likeScore) }}
             </span>
+          </div>
+          <div class="qa-score-row">
             <span>
-              答案重排分 = {{ formatScore(item.answerBm25RawScore) }} / {{ formatScore(item.answerBm25NormalizationBase) }}
-              = {{ formatScore(item.answerRerankScore) }}
+              点击量得分 = {{ formatCount(item.clickCount) }} / {{ formatCount(item.clickNormalizationBase) }}
+              = {{ formatScore(item.clickScore) }}
             </span>
           </div>
           <div class="qa-score-row">
             <span>
               总分 = {{ formatScore(item.questionRecallScore) }} * {{ formatWeight(item.totalQuestionRecallWeight) }}
-              + {{ formatScore(item.answerRerankScore) }} * {{ formatWeight(item.totalAnswerRerankWeight) }}
+              + {{ formatScore(item.answerBm25Score) }} * {{ formatWeight(item.totalAnswerBm25Weight) }}
+              + {{ formatScore(item.likeScore) }} * {{ formatWeight(item.totalLikeWeight) }}
+              + {{ formatScore(item.clickScore) }} * {{ formatWeight(item.totalClickWeight) }}
               = {{ formatScore(item.totalScore) }}
             </span>
           </div>
@@ -142,7 +182,7 @@
 <script th:src="@{/js/axios.min.js}"></script>
 <script type="text/javascript">
   var SEARCH_STATE_KEY = "courseQaSearchState";
-  var SEARCH_STATE_VERSION = 6;
+  var SEARCH_STATE_VERSION = 7;
   var vm = new Vue({
     el:'#app',
     data:{
@@ -156,6 +196,7 @@
       loading:false,
       hasSearched:false,
       errorMessage:"",
+      savingQuestionIds:{},
       searchMeta:{
         recalledQuestionCount:0,
         recalledAnswerCount:0,
@@ -172,6 +213,9 @@
     },
     methods:{
       searchPage(){
+        return this.executeSearch();
+      },
+      executeSearch(){
         var trimmedKeyword = this.keyword.trim();
         this.keyword = trimmedKeyword;
         this.hasSearched = true;
@@ -180,11 +224,11 @@
           this.clearSearchResults();
           this.persistSearchState();
           this.focusKeywordInput();
-          return;
+          return Promise.resolve();
         }
 
         this.loading = true;
-        axios.request({
+        return axios.request({
           method:"POST",
           url:"/queryse",
           params:{
@@ -197,7 +241,7 @@
           }
         }).then(response=>{
           var payload = response.data || {};
-          this.results = payload.items || [];
+          this.results = this.hydrateSearchResults(payload.items || []);
           this.keywordTerms = Array.isArray(payload.keywordTerms) ? payload.keywordTerms : [];
           this.searchMeta = {
             recalledQuestionCount: payload.recalledQuestionCount || 0,
@@ -212,6 +256,42 @@
         }).then(()=>{
           this.loading = false;
         });
+      },
+      hydrateSearchResults(results){
+        if(!Array.isArray(results)){
+          return [];
+        }
+        var normalizedResults = [];
+        for(var index = 0; index < results.length; index++){
+          normalizedResults.push(this.normalizeResultItem(results[index]));
+        }
+        return normalizedResults;
+      },
+      normalizeResultItem(item){
+        var normalizedItem = Object.assign({}, item || {});
+        var likeCount = this.normalizeMetricCount(normalizedItem.likeCount);
+        var clickCount = this.normalizeMetricCount(normalizedItem.clickCount);
+        normalizedItem.likeCount = likeCount;
+        normalizedItem.clickCount = clickCount;
+        // savedLikeCount / savedClickCount 只表示“后端已保存值”，
+        // 用它和当前页面值做对比，就能判断某个问题是否还有未保存修改。
+        normalizedItem.savedLikeCount = normalizedItem.savedLikeCount === undefined
+          ? likeCount
+          : this.normalizeMetricCount(normalizedItem.savedLikeCount);
+        normalizedItem.savedClickCount = normalizedItem.savedClickCount === undefined
+          ? clickCount
+          : this.normalizeMetricCount(normalizedItem.savedClickCount);
+        return normalizedItem;
+      },
+      normalizeMetricCount(metricCount){
+        if(metricCount === undefined || metricCount === null || metricCount === ""){
+          return 0;
+        }
+        var normalizedCount = parseInt(metricCount, 10);
+        if(isNaN(normalizedCount) || normalizedCount < 0){
+          return 0;
+        }
+        return normalizedCount;
       },
       normalizeTopK(topK){
         if(!topK || topK < 1){
@@ -284,7 +364,7 @@
           }
           this.keyword = searchState.keyword || "";
           this.keywordTerms = Array.isArray(searchState.keywordTerms) ? searchState.keywordTerms : [];
-          this.results = searchState.results || [];
+          this.results = this.hydrateSearchResults(searchState.results || []);
           this.recallStrategy = searchState.recallStrategy || "top_k";
           this.topK = searchState.topK || 5;
           this.topPThreshold = searchState.topPThreshold || 0.85;
@@ -305,11 +385,89 @@
         }
         for(var index = 0; index < results.length; index++){
           var item = results[index] || {};
-          if(item.answerBm25RawScore === undefined || item.answerBm25NormalizationBase === undefined){
+          if(
+            item.questionRecallRawScore === undefined
+            || item.questionRecallNormalizationBase === undefined
+            || item.answerBm25RawScore === undefined
+            || item.answerBm25NormalizationBase === undefined
+            || item.answerBm25Score === undefined
+            || item.likeCount === undefined
+            || item.clickCount === undefined
+            || item.likeScore === undefined
+            || item.clickScore === undefined
+          ){
             return false;
           }
         }
         return true;
+      },
+      adjustMetric(item, fieldName, delta){
+        if(!item || !fieldName){
+          return;
+        }
+        var currentCount = this.normalizeMetricCount(item[fieldName]);
+        item[fieldName] = Math.max(currentCount + delta, 0);
+        this.persistSearchState();
+      },
+      isQuestionDirty(questionDocumentId){
+        if(!questionDocumentId){
+          return false;
+        }
+        for(var index = 0; index < this.results.length; index++){
+          var currentItem = this.results[index] || {};
+          if(currentItem.questionDocumentId !== questionDocumentId){
+            continue;
+          }
+          if(
+            this.normalizeMetricCount(currentItem.likeCount) !== this.normalizeMetricCount(currentItem.savedLikeCount)
+            || this.normalizeMetricCount(currentItem.clickCount) !== this.normalizeMetricCount(currentItem.savedClickCount)
+          ){
+            return true;
+          }
+        }
+        return false;
+      },
+      isQuestionSaving(questionDocumentId){
+        return !!this.savingQuestionIds[questionDocumentId];
+      },
+      saveQuestionMetrics(questionDocumentId){
+        if(!questionDocumentId || this.isQuestionSaving(questionDocumentId) || !this.isQuestionDirty(questionDocumentId)){
+          return Promise.resolve();
+        }
+
+        var answers = [];
+        for(var index = 0; index < this.results.length; index++){
+          var currentItem = this.results[index] || {};
+          if(currentItem.questionDocumentId !== questionDocumentId || !currentItem.answerDocumentId){
+            continue;
+          }
+          answers.push({
+            answerDocumentId: currentItem.answerDocumentId,
+            likeCount: this.normalizeMetricCount(currentItem.likeCount),
+            clickCount: this.normalizeMetricCount(currentItem.clickCount)
+          });
+        }
+        if(answers.length === 0){
+          return Promise.resolve();
+        }
+
+        this.errorMessage = "";
+        this.$set(this.savingQuestionIds, questionDocumentId, true);
+        return axios.request({
+          method:"POST",
+          url:"/updateQAMetrics",
+          data:{
+            questionDocumentId: questionDocumentId,
+            answers: answers
+          }
+        }).then(()=>{
+          // 保存成功后立刻重新检索，保证分数、排序和归一化基准与后端一致。
+          return this.executeSearch();
+        }).catch(error=>{
+          this.errorMessage = this.extractErrorMessage(error, "互动指标保存失败，请稍后重试。");
+        }).then(()=>{
+          this.$delete(this.savingQuestionIds, questionDocumentId);
+        });
       },
       openAnswer(answerDocumentId){
         this.persistSearchState();
@@ -331,6 +489,9 @@
           return "-";
         }
         return Number(weight).toFixed(2);
+      },
+      formatCount(count){
+        return this.normalizeMetricCount(count);
       },
       formatQuality(answer_quality){
         if(answer_quality === undefined || answer_quality === null || answer_quality === ""){

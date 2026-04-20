@@ -1,9 +1,13 @@
 package com.example.demo.controller;
 
 import com.example.demo.pojo.courseqa.CourseQaImportResult;
+import com.example.demo.pojo.courseqa.CourseQaMetricsClearResponse;
+import com.example.demo.pojo.courseqa.CourseQaMetricsUpdateRequest;
+import com.example.demo.pojo.courseqa.CourseQaMetricsUpdateResponse;
 import com.example.demo.pojo.courseqa.CourseQaSearchResponse;
 import com.example.demo.service.CourseQaSearchService;
 import java.io.IOException;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -37,5 +41,16 @@ public class CourseQaController {
             throws IOException {
         return courseQaSearchService.searchAnswers(
                 keyword, pageNo, pageSize, recallStrategy, topK, topP);
+    }
+
+    @PostMapping("/updateQAMetrics")
+    public CourseQaMetricsUpdateResponse updateQaMetrics(
+            @RequestBody CourseQaMetricsUpdateRequest request) throws IOException {
+        return courseQaSearchService.updateAnswerMetrics(request);
+    }
+
+    @PostMapping("/clearQA")
+    public CourseQaMetricsClearResponse clearQa() throws IOException {
+        return courseQaSearchService.clearQaMetrics();
     }
 }

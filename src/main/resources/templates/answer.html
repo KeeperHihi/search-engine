@@ -16,9 +16,9 @@
   <div style="margin-bottom:18px; padding:12px 16px; background:#f7f9fe; border:1px solid #dfe6f1; font-size:14px; color:#555;">
     <span style="margin-right:18px;">总分 <strong id="detail-total-score">-</strong></span>
     <span style="margin-right:18px;">问题召回分 <strong id="detail-question-score">-</strong></span>
-    <span style="margin-right:18px;">答案重排分 <strong id="detail-answer-score">-</strong></span>
-    <span style="margin-right:18px;">答案 BM25 原始分 <strong id="detail-answer-bm25-raw-score">-</strong></span>
-    <span style="margin-right:18px;">BM25 归一化基准 <strong id="detail-answer-bm25-base">-</strong></span>
+    <span style="margin-right:18px;">答案BM25得分 <strong id="detail-answer-bm25-score">-</strong></span>
+    <span style="margin-right:18px;">点赞量得分 <strong id="detail-like-score">-</strong></span>
+    <span style="margin-right:18px;">点击量得分 <strong id="detail-click-score">-</strong></span>
     <span>answer_quality <strong id="detail-answer-quality" th:text="${answer_quality == null ? '-' : answer_quality}">-</strong></span>
   </div>
 
@@ -79,11 +79,9 @@
 
       document.getElementById("detail-total-score").textContent = Number(currentItem.totalScore || 0).toFixed(4);
       document.getElementById("detail-question-score").textContent = Number(currentItem.questionRecallScore || 0).toFixed(4);
-      document.getElementById("detail-answer-score").textContent = Number(currentItem.answerRerankScore || 0).toFixed(4);
-      document.getElementById("detail-answer-bm25-raw-score").textContent =
-        Number(currentItem.answerBm25RawScore || 0).toFixed(4);
-      document.getElementById("detail-answer-bm25-base").textContent =
-        Number(currentItem.answerBm25NormalizationBase || 0).toFixed(4);
+      document.getElementById("detail-answer-bm25-score").textContent = Number(currentItem.answerBm25Score || 0).toFixed(4);
+      document.getElementById("detail-like-score").textContent = Number(currentItem.likeScore || 0).toFixed(4);
+      document.getElementById("detail-click-score").textContent = Number(currentItem.clickScore || 0).toFixed(4);
       if (currentItem.answer_quality !== undefined && currentItem.answer_quality !== null) {
         document.getElementById("detail-answer-quality").textContent = currentItem.answer_quality;
       }

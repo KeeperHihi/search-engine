@@ -18,6 +18,8 @@ public class CourseQaAnswerDetail {
     private String questionText;
     private String answerText;
     private Integer answer_quality;
+    private int likeCount;
+    private int clickCount;
     private List<String> questionTerms;
     private List<String> answerTerms;
 }

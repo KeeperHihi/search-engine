@@ -991,6 +991,69 @@ i.f-ico-triangle-mb {
     font-size: 12px
 }
 
+.qa-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f3;
+    background: #fafcff
+}
+
+.qa-counter-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px
+}
+
+.qa-counter-label {
+    color: #555;
+    font-size: 12px
+}
+
+.qa-counter-btn {
+    width: 26px;
+    height: 26px;
+    border: 1px solid #b8c7ea;
+    background: #fff;
+    color: #0000FF;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1
+}
+
+.qa-counter-btn:disabled {
+    color: #9aa5bf;
+    border-color: #d5dced;
+    cursor: not-allowed
+}
+
+.qa-counter-value {
+    min-width: 28px;
+    text-align: center;
+    color: #222;
+    font-size: 13px;
+    font-weight: 700
+}
+
+.qa-save-btn {
+    min-width: 112px;
+    height: 30px;
+    padding: 0 14px;
+    border: 1px solid #b8c7ea;
+    background: #fff;
+    color: #0000FF;
+    cursor: pointer
+}
+
+.qa-save-btn:disabled {
+    color: #9aa5bf;
+    border-color: #d5dced;
+    cursor: not-allowed
+}
+
 .qa-score-row {
     margin-bottom: 6px;
     line-height: 1.8

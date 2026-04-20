@@ -3,8 +3,12 @@ package com.example.demo.service;
 import com.example.demo.constants.EsIndexNames;
 import com.example.demo.pojo.courseqa.CourseQaAnswerDetail;
 import com.example.demo.pojo.courseqa.CourseQaAnswerItem;
+import com.example.demo.pojo.courseqa.CourseQaAnswerMetricsUpdateItem;
 import com.example.demo.pojo.courseqa.CourseQaDataset;
 import com.example.demo.pojo.courseqa.CourseQaImportResult;
+import com.example.demo.pojo.courseqa.CourseQaMetricsClearResponse;
+import com.example.demo.pojo.courseqa.CourseQaMetricsUpdateRequest;
+import com.example.demo.pojo.courseqa.CourseQaMetricsUpdateResponse;
 import com.example.demo.pojo.courseqa.CourseQaQuestionItem;
 import com.example.demo.pojo.courseqa.CourseQaSearchResponse;
 import com.example.demo.pojo.courseqa.CourseQaSearchResultItem;
@@ -30,11 +34,14 @@ import java.util.concurrent.TimeUnit;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
+import org.elasticsearch.action.search.ClearScrollRequest;
+import org.elasticsearch.action.search.SearchScrollRequest;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.client.indices.AnalyzeRequest;
@@ -43,6 +50,7 @@ import org.elasticsearch.client.indices.CreateIndexRequest;
 import org.elasticsearch.client.indices.GetIndexRequest;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.search.Scroll;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.MatchQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
@@ -74,6 +82,7 @@ public class CourseQaSearchService {
     private static final int MAX_PAGE_SIZE = 200;
     private static final int MAX_CANDIDATE_ANSWERS = 10000;
     private static final int TOP_P_FETCH_SIZE = 120;
+    private static final int METRICS_SCROLL_BATCH_SIZE = 500;
     private static final String IK_INDEX_ANALYZER = "ik_max_word";
     private static final String IK_SEARCH_ANALYZER = "ik_smart";
     private static final String IK_TERM_ANALYZER = "ik_smart";
@@ -187,9 +196,92 @@ public class CourseQaSearchService {
         answerDetail.setQuestionText(readString(sourceMap, "questionText"));
         answerDetail.setAnswerText(readString(sourceMap, "answerText"));
         answerDetail.setAnswer_quality(readNullableInteger(sourceMap, "answer_quality"));
+        answerDetail.setLikeCount(readInteger(sourceMap, "likeCount"));
+        answerDetail.setClickCount(readInteger(sourceMap, "clickCount"));
         answerDetail.setQuestionTerms(loadQuestionTerms(questionDocumentId));
         answerDetail.setAnswerTerms(readStringList(sourceMap, "answerTerms"));
         return answerDetail;
+    }
+
+    public CourseQaMetricsUpdateResponse updateAnswerMetrics(CourseQaMetricsUpdateRequest request)
+            throws IOException {
+        CourseQaMetricsUpdateResponse response = new CourseQaMetricsUpdateResponse();
+        if (request == null) {
+            return response;
+        }
+
+        response.setQuestionDocumentId(normalizeTextValue(request.getQuestionDocumentId()));
+        if (!indexExists(EsIndexNames.COURSE_QA_ANSWER)) {
+            return response;
+        }
+
+        List<CourseQaAnswerMetricsUpdateItem> normalizedItems =
+                normalizeMetricsUpdateItems(request.getAnswers());
+        if (normalizedItems.isEmpty()) {
+            return response;
+        }
+
+        BulkRequest bulkRequest = new BulkRequest();
+        for (CourseQaAnswerMetricsUpdateItem item : normalizedItems) {
+            bulkRequest.add(buildMetricsUpdateRequest(
+                    item.getAnswerDocumentId(), item.getLikeCount(), item.getClickCount()));
+        }
+
+        BulkResponse bulkResponse = client.bulk(bulkRequest, RequestOptions.DEFAULT);
+        if (bulkResponse.hasFailures()) {
+            throw new IOException("课程问答互动指标保存失败：" + bulkResponse.buildFailureMessage());
+        }
+        response.setUpdatedAnswerCount(normalizedItems.size());
+        return response;
+    }
+
+    public CourseQaMetricsClearResponse clearQaMetrics() throws IOException {
+        if (!indexExists(EsIndexNames.COURSE_QA_ANSWER)) {
+            return new CourseQaMetricsClearResponse(0);
+        }
+
+        Scroll scroll = new Scroll(TimeValue.timeValueMinutes(1L));
+        SearchRequest searchRequest = new SearchRequest(EsIndexNames.COURSE_QA_ANSWER);
+        searchRequest.scroll(scroll);
+
+        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
+        sourceBuilder.size(METRICS_SCROLL_BATCH_SIZE);
+        sourceBuilder.fetchSource(false);
+        sourceBuilder.sort("_doc");
+        sourceBuilder.query(QueryBuilders.matchAllQuery());
+        searchRequest.source(sourceBuilder);
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        String scrollId = searchResponse.getScrollId();
+        int clearedAnswerCount = 0;
+        try {
+            while (true) {
+                SearchHit[] searchHits = searchResponse.getHits().getHits();
+                if (searchHits == null || searchHits.length == 0) {
+                    break;
+                }
+
+                BulkRequest bulkRequest = new BulkRequest();
+                for (SearchHit searchHit : searchHits) {
+                    bulkRequest.add(buildMetricsUpdateRequest(searchHit.getId(), 0, 0));
+                }
+
+                BulkResponse bulkResponse = client.bulk(bulkRequest, RequestOptions.DEFAULT);
+                if (bulkResponse.hasFailures()) {
+                    throw new IOException("课程问答互动指标清零失败：" + bulkResponse.buildFailureMessage());
+                }
+                clearedAnswerCount += searchHits.length;
+
+                SearchScrollRequest scrollRequest = new SearchScrollRequest(scrollId);
+                scrollRequest.scroll(scroll);
+                searchResponse = client.scroll(scrollRequest, RequestOptions.DEFAULT);
+                scrollId = searchResponse.getScrollId();
+            }
+        } finally {
+            clearScrollQuietly(scrollId);
+        }
+        return new CourseQaMetricsClearResponse(clearedAnswerCount);
     }
 
     private List<String> loadQuestionTerms(String questionDocumentId) throws IOException {
@@ -355,7 +447,7 @@ public class CourseQaSearchService {
         Map<String, Double> answerBm25ScoreMap = new HashMap<String, Double>();
         if (keyword == null || keyword.trim().isEmpty() || answerCandidates == null
                 || answerCandidates.isEmpty()) {
-            return new AnswerBm25Stats(answerBm25ScoreMap, 1D);
+            return new AnswerBm25Stats(answerBm25ScoreMap, 0D);
         }
 
         List<String> answerDocumentIds = new ArrayList<String>();
@@ -366,7 +458,7 @@ public class CourseQaSearchService {
             }
         }
         if (answerDocumentIds.isEmpty()) {
-            return new AnswerBm25Stats(answerBm25ScoreMap, 1D);
+            return new AnswerBm25Stats(answerBm25ScoreMap, 0D);
         }
 
         SearchRequest searchRequest = new SearchRequest(EsIndexNames.COURSE_QA_ANSWER);
@@ -394,8 +486,7 @@ public class CourseQaSearchService {
             maxBm25Score = Math.max(maxBm25Score, currentBm25Score);
         }
 
-        double normalizationBase = maxBm25Score > 0D ? maxBm25Score : 1D;
-        return new AnswerBm25Stats(answerBm25ScoreMap, normalizationBase);
+        return new AnswerBm25Stats(answerBm25ScoreMap, maxBm25Score);
     }
 
     private List<CourseQaSearchResultItem> rerankAnswers(
@@ -409,6 +500,8 @@ public class CourseQaSearchService {
         }
 
         AnswerBm25Stats answerBm25Stats = fetchAnswerBm25Stats(keyword, answerCandidates);
+        Map<String, QuestionAnswerMetricStats> questionMetricStatsMap =
+                buildQuestionMetricStats(answerCandidates);
         List<CourseQaSearchResultItem> rankedItems = new ArrayList<CourseQaSearchResultItem>();
         for (Map<String, Object> answerCandidate : answerCandidates) {
             String questionDocumentId = readString(answerCandidate, "questionDocumentId");
@@ -417,47 +510,73 @@ public class CourseQaSearchService {
                 continue;
             }
 
+            QuestionAnswerMetricStats questionMetricStats = questionMetricStatsMap.get(questionDocumentId);
+            if (questionMetricStats == null) {
+                questionMetricStats = new QuestionAnswerMetricStats();
+            }
+
             String answerDocumentId = readString(answerCandidate, "answerDocumentId");
             double answerBm25RawScore =
                     getScoreOrZero(answerBm25Stats.scoreMap, answerDocumentId);
+            int likeCount = normalizeNonNegativeMetricCount(readInteger(answerCandidate, "likeCount"));
+            int clickCount = normalizeNonNegativeMetricCount(readInteger(answerCandidate, "clickCount"));
             CourseQaRankingUtil.ScoreBreakdown scoreBreakdown =
                     CourseQaRankingUtil.scoreCandidate(
-                            questionHit.normalizedRecallScore,
+                            questionHit.weightedRecallScore,
+                            questionHit.maxWeightedRecallScore,
                             answerBm25RawScore,
-                            answerBm25Stats.normalizationBase);
+                            answerBm25Stats.normalizationBase,
+                            likeCount,
+                            questionMetricStats.maxLikeCount,
+                            clickCount,
+                            questionMetricStats.maxClickCount);
 
             CourseQaSearchResultItem resultItem = new CourseQaSearchResultItem();
             resultItem.setAnswerDocumentId(answerDocumentId);
+            resultItem.setQuestionDocumentId(questionDocumentId);
             resultItem.setCategoryName(readString(answerCandidate, "categoryName"));
             resultItem.setQuestionId(readString(answerCandidate, "questionId"));
             resultItem.setQuestionText(readString(answerCandidate, "questionText"));
             resultItem.setAnswerText(readString(answerCandidate, "answerText"));
             resultItem.setAnswer_quality(readNullableInteger(answerCandidate, "answer_quality"));
             resultItem.setQuestionRank(questionHit.questionRank);
+            resultItem.setQuestionRecallRawScore(
+                    roundScore(scoreBreakdown.getQuestionRecallRawScore()));
+            resultItem.setQuestionRecallNormalizationBase(
+                    roundScore(scoreBreakdown.getQuestionRecallNormalizationBase()));
             resultItem.setQuestionRecallScore(roundScore(scoreBreakdown.getQuestionRecallScore()));
-            resultItem.setAnswerRerankScore(roundScore(scoreBreakdown.getAnswerRerankScore()));
             resultItem.setAnswerBm25RawScore(roundScore(scoreBreakdown.getAnswerBm25RawScore()));
             resultItem.setAnswerBm25NormalizationBase(
                     roundScore(scoreBreakdown.getAnswerBm25NormalizationBase()));
+            resultItem.setAnswerBm25Score(roundScore(scoreBreakdown.getAnswerBm25Score()));
+            resultItem.setLikeCount(scoreBreakdown.getLikeCount());
+            resultItem.setLikeNormalizationBase(scoreBreakdown.getLikeNormalizationBase());
+            resultItem.setLikeScore(roundScore(scoreBreakdown.getLikeScore()));
+            resultItem.setClickCount(scoreBreakdown.getClickCount());
+            resultItem.setClickNormalizationBase(scoreBreakdown.getClickNormalizationBase());
+            resultItem.setClickScore(roundScore(scoreBreakdown.getClickScore()));
             resultItem.setQuestionRecallContribution(
                     roundScore(
                             scoreBreakdown.getQuestionRecallScore()
                                     * CourseQaRankingUtil.TOTAL_QUESTION_RECALL_WEIGHT));
-            resultItem.setAnswerRerankContribution(
+            resultItem.setAnswerBm25Contribution(
                     roundScore(
-                            scoreBreakdown.getAnswerRerankScore()
-                                    * CourseQaRankingUtil.TOTAL_ANSWER_RERANK_WEIGHT));
+                            scoreBreakdown.getAnswerBm25Score()
+                                    * CourseQaRankingUtil.TOTAL_ANSWER_BM25_WEIGHT));
+            resultItem.setLikeContribution(
+                    roundScore(
+                            scoreBreakdown.getLikeScore()
+                                    * CourseQaRankingUtil.TOTAL_LIKE_WEIGHT));
+            resultItem.setClickContribution(
+                    roundScore(
+                            scoreBreakdown.getClickScore()
+                                    * CourseQaRankingUtil.TOTAL_CLICK_WEIGHT));
             resultItem.setTotalQuestionRecallWeight(
                     CourseQaRankingUtil.TOTAL_QUESTION_RECALL_WEIGHT);
-            resultItem.setTotalAnswerRerankWeight(
-                    CourseQaRankingUtil.TOTAL_ANSWER_RERANK_WEIGHT);
-            resultItem.setQuestionPhraseScore(roundScore(questionHit.phraseScore));
-            resultItem.setQuestionAndScore(roundScore(questionHit.andScore));
-            resultItem.setQuestionLooseScore(roundScore(questionHit.looseScore));
-            resultItem.setQuestionPhraseBoost(QUESTION_PHRASE_BOOST);
-            resultItem.setQuestionAndBoost(QUESTION_AND_BOOST);
-            resultItem.setQuestionLooseBoost(QUESTION_LOOSE_BOOST);
-            resultItem.setQuestionRecallMaxScore(roundScore(questionHit.maxWeightedRecallScore));
+            resultItem.setTotalAnswerBm25Weight(
+                    CourseQaRankingUtil.TOTAL_ANSWER_BM25_WEIGHT);
+            resultItem.setTotalLikeWeight(CourseQaRankingUtil.TOTAL_LIKE_WEIGHT);
+            resultItem.setTotalClickWeight(CourseQaRankingUtil.TOTAL_CLICK_WEIGHT);
             resultItem.setTotalScore(roundScore(scoreBreakdown.getTotalScore()));
             rankedItems.add(resultItem);
         }
@@ -496,13 +615,12 @@ public class CourseQaSearchService {
             maxWeightedRecallScore = Math.max(maxWeightedRecallScore, questionHit.weightedRecallScore);
         }
 
-        double normalizedMaxScore = maxWeightedRecallScore <= 0D ? 1D : maxWeightedRecallScore;
         for (QuestionRecallHit questionHit : questionHits) {
-            questionHit.maxWeightedRecallScore = normalizedMaxScore;
+            questionHit.maxWeightedRecallScore = maxWeightedRecallScore;
             questionHit.normalizedRecallScore =
-                    questionHit.weightedRecallScore <= 0D
+                    questionHit.weightedRecallScore <= 0D || maxWeightedRecallScore <= 0D
                             ? 0D
-                            : questionHit.weightedRecallScore / normalizedMaxScore;
+                            : questionHit.weightedRecallScore / maxWeightedRecallScore;
         }
     }
 
@@ -698,6 +816,8 @@ public class CourseQaSearchService {
         document.put("answerText", answerItem.getAnswerText());
         document.put("answerTerms", analyzeTextWithIk(answerItem.getAnswerText()));
         document.put("answer_quality", answerItem.getAnswer_quality());
+        document.put("likeCount", 0);
+        document.put("clickCount", 0);
         return document;
     }
 
@@ -767,7 +887,9 @@ public class CourseQaSearchService {
                         + "        \"search_analyzer\": \"" + IK_SEARCH_ANALYZER + "\"\n"
                         + "      },\n"
                         + "      \"answerTerms\": {\"type\": \"keyword\"},\n"
-                        + "      \"answer_quality\": {\"type\": \"integer\"}\n"
+                        + "      \"answer_quality\": {\"type\": \"integer\"},\n"
+                        + "      \"likeCount\": {\"type\": \"integer\"},\n"
+                        + "      \"clickCount\": {\"type\": \"integer\"}\n"
                         + "    }\n"
                         + "  }\n"
                         + "}",
@@ -832,6 +954,13 @@ public class CourseQaSearchService {
         return questionId.trim();
     }
 
+    private String normalizeTextValue(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.trim();
+    }
+
     private String readString(Map<String, Object> sourceMap, String fieldName) {
         Object value = sourceMap.get(fieldName);
         return value == null ? "" : String.valueOf(value);
@@ -887,8 +1016,83 @@ public class CourseQaSearchService {
         }
     }
 
+    private int normalizeNonNegativeMetricCount(int count) {
+        return Math.max(count, 0);
+    }
+
     private double roundScore(double score) {
         return Double.parseDouble(SCORE_FORMAT.format(score));
+    }
+
+    private UpdateRequest buildMetricsUpdateRequest(
+            String answerDocumentId, int likeCount, int clickCount) {
+        Map<String, Object> metricsDocument = new LinkedHashMap<String, Object>();
+        metricsDocument.put("likeCount", normalizeNonNegativeMetricCount(likeCount));
+        metricsDocument.put("clickCount", normalizeNonNegativeMetricCount(clickCount));
+        return new UpdateRequest(EsIndexNames.COURSE_QA_ANSWER, answerDocumentId)
+                .doc(metricsDocument);
+    }
+
+    private List<CourseQaAnswerMetricsUpdateItem> normalizeMetricsUpdateItems(
+            List<CourseQaAnswerMetricsUpdateItem> rawItems) {
+        LinkedHashMap<String, CourseQaAnswerMetricsUpdateItem> normalizedItemMap =
+                new LinkedHashMap<String, CourseQaAnswerMetricsUpdateItem>();
+        if (rawItems == null) {
+            return new ArrayList<CourseQaAnswerMetricsUpdateItem>();
+        }
+
+        for (CourseQaAnswerMetricsUpdateItem rawItem : rawItems) {
+            if (rawItem == null) {
+                continue;
+            }
+            String answerDocumentId = normalizeTextValue(rawItem.getAnswerDocumentId());
+            if (answerDocumentId.isEmpty()) {
+                continue;
+            }
+            normalizedItemMap.put(
+                    answerDocumentId,
+                    new CourseQaAnswerMetricsUpdateItem(
+                            answerDocumentId,
+                            normalizeNonNegativeMetricCount(rawItem.getLikeCount()),
+                            normalizeNonNegativeMetricCount(rawItem.getClickCount())));
+        }
+        return new ArrayList<CourseQaAnswerMetricsUpdateItem>(normalizedItemMap.values());
+    }
+
+    private Map<String, QuestionAnswerMetricStats> buildQuestionMetricStats(
+            List<Map<String, Object>> answerCandidates) {
+        Map<String, QuestionAnswerMetricStats> questionMetricStatsMap =
+                new HashMap<String, QuestionAnswerMetricStats>();
+        // 点赞量/点击量得分都要求按“同一个问题下的答案集合”做最大值归一化，
+        // 所以这里先按 questionDocumentId 聚合出当前候选答案里的最大值基准。
+        for (Map<String, Object> answerCandidate : answerCandidates) {
+            String questionDocumentId = readString(answerCandidate, "questionDocumentId");
+            QuestionAnswerMetricStats questionMetricStats = questionMetricStatsMap.get(questionDocumentId);
+            if (questionMetricStats == null) {
+                questionMetricStats = new QuestionAnswerMetricStats();
+                questionMetricStatsMap.put(questionDocumentId, questionMetricStats);
+            }
+            questionMetricStats.maxLikeCount = Math.max(
+                    questionMetricStats.maxLikeCount,
+                    normalizeNonNegativeMetricCount(readInteger(answerCandidate, "likeCount")));
+            questionMetricStats.maxClickCount = Math.max(
+                    questionMetricStats.maxClickCount,
+                    normalizeNonNegativeMetricCount(readInteger(answerCandidate, "clickCount")));
+        }
+        return questionMetricStatsMap;
+    }
+
+    private void clearScrollQuietly(String scrollId) {
+        if (scrollId == null || scrollId.trim().isEmpty()) {
+            return;
+        }
+        try {
+            ClearScrollRequest clearScrollRequest = new ClearScrollRequest();
+            clearScrollRequest.addScrollId(scrollId);
+            client.clearScroll(clearScrollRequest, RequestOptions.DEFAULT);
+        } catch (IOException exception) {
+            // 清理 scroll 失败不会影响主流程结果，但要避免 finally 中再次抛错覆盖原异常。
+        }
     }
 
     private List<String> analyzeTextWithIk(String text) throws IOException {
@@ -963,6 +1167,11 @@ public class CourseQaSearchService {
             this.scoreMap = scoreMap;
             this.normalizationBase = normalizationBase;
         }
+    }
+
+    private static final class QuestionAnswerMetricStats {
+        private int maxLikeCount;
+        private int maxClickCount;
     }
 
     private static final class QuestionRecallHit {
