@@ -109,11 +109,14 @@
             </span>
           </div>
           <div class="qa-score-row">
-            <span>答案覆盖度得分 {{ formatScore(item.answerCoverage) }}</span>
-            <span>答案长度得分 {{ formatScore(item.answerLengthScore) }}</span>
             <span>
-              答案重排分 = {{ formatScore(item.answerCoverage) }} * {{ formatWeight(item.answerCoverageWeight) }}
-              + {{ formatScore(item.answerLengthScore) }} * {{ formatWeight(item.answerLengthWeight) }}
+              答案 BM25 原始分 {{ formatScore(item.answerBm25RawScore) }}
+            </span>
+            <span>
+              归一化基准 {{ formatScore(item.answerBm25NormalizationBase) }}
+            </span>
+            <span>
+              答案重排分 = {{ formatScore(item.answerBm25RawScore) }} / {{ formatScore(item.answerBm25NormalizationBase) }}
               = {{ formatScore(item.answerRerankScore) }}
             </span>
           </div>
@@ -139,7 +142,7 @@
 <script th:src="@{/js/axios.min.js}"></script>
 <script type="text/javascript">
   var SEARCH_STATE_KEY = "courseQaSearchState";
-  var SEARCH_STATE_VERSION = 5;
+  var SEARCH_STATE_VERSION = 6;
   var vm = new Vue({
     el:'#app',
     data:{
@@ -302,7 +305,7 @@
         }
         for(var index = 0; index < results.length; index++){
           var item = results[index] || {};
-          if(item.answerCoverage === undefined || item.answerLengthScore === undefined){
+          if(item.answerBm25RawScore === undefined || item.answerBm25NormalizationBase === undefined){
             return false;
           }
         }

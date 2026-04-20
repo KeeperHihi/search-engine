@@ -12,7 +12,6 @@ import com.example.demo.utils.CourseQaDatasetParser;
 import com.example.demo.utils.CourseQaDocumentIdUtil;
 import com.example.demo.utils.CourseQaLogicQueryUtil;
 import com.example.demo.utils.CourseQaRankingUtil;
-import com.example.demo.utils.CourseQaTextUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -157,7 +156,7 @@ public class CourseQaSearchService {
         List<String> keywordTerms = analyzeTextWithIk(parsedQuery.getRecallKeyword());
         response.setKeywordTerms(keywordTerms);
         List<CourseQaSearchResultItem> rankedAnswers =
-                rerankAnswers(keywordTerms, questionHits, filteredAnswerCandidates);
+                rerankAnswers(parsedQuery.getRecallKeyword(), questionHits, filteredAnswerCandidates);
         List<CourseQaSearchResultItem> pagedItems =
                 paginateItems(rankedAnswers, response.getPageNo(), response.getPageSize());
         response.setReturnedAnswerCount(pagedItems.size());
@@ -351,15 +350,65 @@ public class CourseQaSearchService {
         return answerList;
     }
 
+    private AnswerBm25Stats fetchAnswerBm25Stats(
+            String keyword, List<Map<String, Object>> answerCandidates) throws IOException {
+        Map<String, Double> answerBm25ScoreMap = new HashMap<String, Double>();
+        if (keyword == null || keyword.trim().isEmpty() || answerCandidates == null
+                || answerCandidates.isEmpty()) {
+            return new AnswerBm25Stats(answerBm25ScoreMap, 1D);
+        }
+
+        List<String> answerDocumentIds = new ArrayList<String>();
+        for (Map<String, Object> answerCandidate : answerCandidates) {
+            String answerDocumentId = readString(answerCandidate, "answerDocumentId");
+            if (!answerDocumentId.isEmpty()) {
+                answerDocumentIds.add(answerDocumentId);
+            }
+        }
+        if (answerDocumentIds.isEmpty()) {
+            return new AnswerBm25Stats(answerBm25ScoreMap, 1D);
+        }
+
+        SearchRequest searchRequest = new SearchRequest(EsIndexNames.COURSE_QA_ANSWER);
+        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
+        sourceBuilder.from(0);
+        sourceBuilder.size(answerDocumentIds.size());
+        sourceBuilder.fetchSource(false);
+
+        MatchQueryBuilder bm25Query = QueryBuilders.matchQuery("answerText", keyword);
+        bm25Query.analyzer(IK_SEARCH_ANALYZER);
+
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.filter(
+                QueryBuilders.idsQuery().addIds(answerDocumentIds.toArray(new String[0])));
+        boolQueryBuilder.must(bm25Query);
+        sourceBuilder.query(boolQueryBuilder);
+        searchRequest.source(sourceBuilder);
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        double maxBm25Score = 0D;
+        for (SearchHit searchHit : searchResponse.getHits().getHits()) {
+            double currentBm25Score = searchHit.getScore();
+            answerBm25ScoreMap.put(searchHit.getId(), currentBm25Score);
+            maxBm25Score = Math.max(maxBm25Score, currentBm25Score);
+        }
+
+        double normalizationBase = maxBm25Score > 0D ? maxBm25Score : 1D;
+        return new AnswerBm25Stats(answerBm25ScoreMap, normalizationBase);
+    }
+
     private List<CourseQaSearchResultItem> rerankAnswers(
-            List<String> keywordTerms,
+            String keyword,
             List<QuestionRecallHit> questionHits,
-            List<Map<String, Object>> answerCandidates) {
+            List<Map<String, Object>> answerCandidates)
+            throws IOException {
         Map<String, QuestionRecallHit> questionHitMap = new HashMap<String, QuestionRecallHit>();
         for (QuestionRecallHit questionHit : questionHits) {
             questionHitMap.put(questionHit.questionDocumentId, questionHit);
         }
 
+        AnswerBm25Stats answerBm25Stats = fetchAnswerBm25Stats(keyword, answerCandidates);
         List<CourseQaSearchResultItem> rankedItems = new ArrayList<CourseQaSearchResultItem>();
         for (Map<String, Object> answerCandidate : answerCandidates) {
             String questionDocumentId = readString(answerCandidate, "questionDocumentId");
@@ -368,27 +417,28 @@ public class CourseQaSearchService {
                 continue;
             }
 
-            String answerText = readString(answerCandidate, "answerText");
+            String answerDocumentId = readString(answerCandidate, "answerDocumentId");
+            double answerBm25RawScore =
+                    getScoreOrZero(answerBm25Stats.scoreMap, answerDocumentId);
             CourseQaRankingUtil.ScoreBreakdown scoreBreakdown =
-                CourseQaRankingUtil.scoreCandidate(
-                    keywordTerms,
-                    questionHit.questionTerms,
-                    answerText,
-                    readStringList(answerCandidate, "answerTerms"),
-                    questionHit.normalizedRecallScore);
+                    CourseQaRankingUtil.scoreCandidate(
+                            questionHit.normalizedRecallScore,
+                            answerBm25RawScore,
+                            answerBm25Stats.normalizationBase);
 
             CourseQaSearchResultItem resultItem = new CourseQaSearchResultItem();
-            resultItem.setAnswerDocumentId(readString(answerCandidate, "answerDocumentId"));
+            resultItem.setAnswerDocumentId(answerDocumentId);
             resultItem.setCategoryName(readString(answerCandidate, "categoryName"));
             resultItem.setQuestionId(readString(answerCandidate, "questionId"));
             resultItem.setQuestionText(readString(answerCandidate, "questionText"));
-            resultItem.setAnswerText(answerText);
+            resultItem.setAnswerText(readString(answerCandidate, "answerText"));
             resultItem.setAnswer_quality(readNullableInteger(answerCandidate, "answer_quality"));
             resultItem.setQuestionRank(questionHit.questionRank);
             resultItem.setQuestionRecallScore(roundScore(scoreBreakdown.getQuestionRecallScore()));
             resultItem.setAnswerRerankScore(roundScore(scoreBreakdown.getAnswerRerankScore()));
-            resultItem.setAnswerCoverage(roundScore(scoreBreakdown.getAnswerCoverage()));
-            resultItem.setAnswerLengthScore(roundScore(scoreBreakdown.getAnswerLengthScore()));
+            resultItem.setAnswerBm25RawScore(roundScore(scoreBreakdown.getAnswerBm25RawScore()));
+            resultItem.setAnswerBm25NormalizationBase(
+                    roundScore(scoreBreakdown.getAnswerBm25NormalizationBase()));
             resultItem.setQuestionRecallContribution(
                     roundScore(
                             scoreBreakdown.getQuestionRecallScore()
@@ -401,8 +451,6 @@ public class CourseQaSearchService {
                     CourseQaRankingUtil.TOTAL_QUESTION_RECALL_WEIGHT);
             resultItem.setTotalAnswerRerankWeight(
                     CourseQaRankingUtil.TOTAL_ANSWER_RERANK_WEIGHT);
-            resultItem.setAnswerCoverageWeight(CourseQaRankingUtil.ANSWER_COVERAGE_WEIGHT);
-            resultItem.setAnswerLengthWeight(CourseQaRankingUtil.ANSWER_LENGTH_WEIGHT);
             resultItem.setQuestionPhraseScore(roundScore(questionHit.phraseScore));
             resultItem.setQuestionAndScore(roundScore(questionHit.andScore));
             resultItem.setQuestionLooseScore(roundScore(questionHit.looseScore));
@@ -649,7 +697,6 @@ public class CourseQaSearchService {
         document.put("questionText", questionItem.getQuestionText());
         document.put("answerText", answerItem.getAnswerText());
         document.put("answerTerms", analyzeTextWithIk(answerItem.getAnswerText()));
-        document.put("answerLength", CourseQaTextUtil.effectiveLength(answerItem.getAnswerText()));
         document.put("answer_quality", answerItem.getAnswer_quality());
         return document;
     }
@@ -720,7 +767,6 @@ public class CourseQaSearchService {
                         + "        \"search_analyzer\": \"" + IK_SEARCH_ANALYZER + "\"\n"
                         + "      },\n"
                         + "      \"answerTerms\": {\"type\": \"keyword\"},\n"
-                        + "      \"answerLength\": {\"type\": \"integer\"},\n"
                         + "      \"answer_quality\": {\"type\": \"integer\"}\n"
                         + "    }\n"
                         + "  }\n"
@@ -906,6 +952,16 @@ public class CourseQaSearchService {
             this.importedAnswerCount = importedAnswerCount;
             this.duplicateQuestionCount = duplicateQuestionCount;
             this.duplicateAnswerCount = duplicateAnswerCount;
+        }
+    }
+
+    private static final class AnswerBm25Stats {
+        private final Map<String, Double> scoreMap;
+        private final double normalizationBase;
+
+        private AnswerBm25Stats(Map<String, Double> scoreMap, double normalizationBase) {
+            this.scoreMap = scoreMap;
+            this.normalizationBase = normalizationBase;
         }
     }
 
