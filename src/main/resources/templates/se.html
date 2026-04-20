@@ -103,13 +103,13 @@
               <button
                 type="button"
                 class="qa-counter-btn"
-                :disabled="loading || isQuestionSaving(item.questionDocumentId)"
+                :disabled="loading || isMetricsSaving()"
                 @click="adjustMetric(item, 'likeCount', -1)">-</button>
               <span class="qa-counter-value">{{ formatCount(item.likeCount) }}</span>
               <button
                 type="button"
                 class="qa-counter-btn"
-                :disabled="loading || isQuestionSaving(item.questionDocumentId)"
+                :disabled="loading || isMetricsSaving()"
                 @click="adjustMetric(item, 'likeCount', 1)">+</button>
             </div>
             <div class="qa-counter-group">
@@ -117,21 +117,21 @@
               <button
                 type="button"
                 class="qa-counter-btn"
-                :disabled="loading || isQuestionSaving(item.questionDocumentId)"
+                :disabled="loading || isMetricsSaving()"
                 @click="adjustMetric(item, 'clickCount', -1)">-</button>
               <span class="qa-counter-value">{{ formatCount(item.clickCount) }}</span>
               <button
                 type="button"
                 class="qa-counter-btn"
-                :disabled="loading || isQuestionSaving(item.questionDocumentId)"
+                :disabled="loading || isMetricsSaving()"
                 @click="adjustMetric(item, 'clickCount', 1)">+</button>
             </div>
             <button
               type="button"
               class="qa-save-btn"
-              :disabled="loading || isQuestionSaving(item.questionDocumentId) || !isQuestionDirty(item.questionDocumentId)"
-              @click="saveQuestionMetrics(item.questionDocumentId)">
-              {{ isQuestionSaving(item.questionDocumentId) ? '保存中...' : '保存本题指标' }}
+              :disabled="loading || isMetricsSaving() || !hasDirtyMetrics()"
+              @click="savePendingMetrics(item.questionDocumentId)">
+              {{ isMetricsSaving() ? '保存中...' : '保存全部修改' }}
             </button>
           </div>
           <div class="qa-score-row">
@@ -210,6 +210,13 @@
     },
     mounted(){
       this.restoreSearchState();
+      this.registerPageShowSync();
+      this.syncSearchStateWithServer();
+    },
+    beforeDestroy(){
+      if(this._pageShowSyncHandler){
+        window.removeEventListener("pageshow", this._pageShowSyncHandler);
+      }
     },
     methods:{
       searchPage(){
@@ -379,6 +386,47 @@
           // 缓存读失败时使用默认页面状态。
         }
       },
+      registerPageShowSync(){
+        var self = this;
+        this._pageShowSyncHandler = function(event){
+          // 浏览器后退返回时页面可能直接从 bfcache 恢复，此时 mounted 不会重新执行，
+          // 需要在 pageshow 阶段主动重新查一次后端，避免继续展示旧缓存结果。
+          if(event && event.persisted){
+            self.syncSearchStateWithServer();
+            return;
+          }
+
+          if(self.isBackForwardNavigation()){
+            self.syncSearchStateWithServer();
+          }
+        };
+        window.addEventListener("pageshow", this._pageShowSyncHandler);
+      },
+      syncSearchStateWithServer(){
+        if(this.loading || !this.hasSearched){
+          return Promise.resolve();
+        }
+
+        var trimmedKeyword = this.keyword ? this.keyword.trim() : "";
+        if(!trimmedKeyword){
+          return Promise.resolve();
+        }
+
+        // 页面刷新或从其他页面返回时，先恢复本地缓存再立刻与后端同步，
+        // 这样点赞/点击量被 clearQA 等外部操作修改后，页面也能自动更新。
+        return this.executeSearch();
+      },
+      isBackForwardNavigation(){
+        if(!window.performance || typeof window.performance.getEntriesByType !== "function"){
+          return false;
+        }
+
+        var navigationEntries = window.performance.getEntriesByType("navigation");
+        if(!navigationEntries || navigationEntries.length === 0){
+          return false;
+        }
+        return navigationEntries[0].type === "back_forward";
+      },
       hasCompleteScoreFields(results){
         if(!Array.isArray(results) || results.length === 0){
           return true;
@@ -401,23 +449,9 @@
         }
         return true;
       },
-      adjustMetric(item, fieldName, delta){
-        if(!item || !fieldName){
-          return;
-        }
-        var currentCount = this.normalizeMetricCount(item[fieldName]);
-        item[fieldName] = Math.max(currentCount + delta, 0);
-        this.persistSearchState();
-      },
-      isQuestionDirty(questionDocumentId){
-        if(!questionDocumentId){
-          return false;
-        }
+      hasDirtyMetrics(){
         for(var index = 0; index < this.results.length; index++){
           var currentItem = this.results[index] || {};
-          if(currentItem.questionDocumentId !== questionDocumentId){
-            continue;
-          }
           if(
             this.normalizeMetricCount(currentItem.likeCount) !== this.normalizeMetricCount(currentItem.savedLikeCount)
             || this.normalizeMetricCount(currentItem.clickCount) !== this.normalizeMetricCount(currentItem.savedClickCount)
@@ -427,32 +461,55 @@
         }
         return false;
       },
-      isQuestionSaving(questionDocumentId){
-        return !!this.savingQuestionIds[questionDocumentId];
-      },
-      saveQuestionMetrics(questionDocumentId){
-        if(!questionDocumentId || this.isQuestionSaving(questionDocumentId) || !this.isQuestionDirty(questionDocumentId)){
-          return Promise.resolve();
-        }
-
-        var answers = [];
+      collectDirtyMetricAnswers(){
+        var dirtyAnswers = [];
         for(var index = 0; index < this.results.length; index++){
           var currentItem = this.results[index] || {};
-          if(currentItem.questionDocumentId !== questionDocumentId || !currentItem.answerDocumentId){
+          if(!currentItem.answerDocumentId){
             continue;
           }
-          answers.push({
+          if(
+            this.normalizeMetricCount(currentItem.likeCount) === this.normalizeMetricCount(currentItem.savedLikeCount)
+            && this.normalizeMetricCount(currentItem.clickCount) === this.normalizeMetricCount(currentItem.savedClickCount)
+          ){
+            continue;
+          }
+          dirtyAnswers.push({
             answerDocumentId: currentItem.answerDocumentId,
             likeCount: this.normalizeMetricCount(currentItem.likeCount),
             clickCount: this.normalizeMetricCount(currentItem.clickCount)
           });
         }
+        return dirtyAnswers;
+      },
+      adjustMetric(item, fieldName, delta){
+        if(!item || !fieldName){
+          return;
+        }
+        var currentCount = this.normalizeMetricCount(item[fieldName]);
+        item[fieldName] = Math.max(currentCount + delta, 0);
+        this.persistSearchState();
+      },
+      isMetricsSaving(){
+        return !!this.savingQuestionIds.__all__;
+      },
+      savePendingMetrics(questionDocumentId, options){
+        var saveOptions = options || {};
+        if(this.isMetricsSaving() || !this.hasDirtyMetrics()){
+          if(typeof saveOptions.onSuccess === "function"){
+            saveOptions.onSuccess();
+          }
+          return Promise.resolve();
+        }
+
+        var answers = this.collectDirtyMetricAnswers();
         if(answers.length === 0){
           return Promise.resolve();
         }
 
         this.errorMessage = "";
-        this.$set(this.savingQuestionIds, questionDocumentId, true);
+        // 任意一个保存按钮都统一提交当前页面的全部未保存修改，避免多题编辑后丢改动。
+        this.$set(this.savingQuestionIds, "__all__", true);
         return axios.request({
           method:"POST",
           url:"/updateQAMetrics",
@@ -461,17 +518,55 @@
             answers: answers
           }
         }).then(()=>{
+          if(typeof saveOptions.onSuccess === "function"){
+            saveOptions.onSuccess();
+          }
+          if(saveOptions.skipRefresh){
+            this.persistSearchState();
+            return Promise.resolve();
+          }
           // 保存成功后立刻重新检索，保证分数、排序和归一化基准与后端一致。
           return this.executeSearch();
         }).catch(error=>{
+          if(typeof saveOptions.onError === "function"){
+            saveOptions.onError(error);
+            return Promise.resolve();
+          }
           this.errorMessage = this.extractErrorMessage(error, "互动指标保存失败，请稍后重试。");
         }).then(()=>{
-          this.$delete(this.savingQuestionIds, questionDocumentId);
+          this.$delete(this.savingQuestionIds, "__all__");
         });
       },
       openAnswer(answerDocumentId){
+        var currentItem = this.findResultItemByAnswerId(answerDocumentId);
+        if(!currentItem || !currentItem.questionDocumentId){
+          this.persistSearchState();
+          window.location.href = "/answer/" + answerDocumentId;
+          return;
+        }
+
+        // 点击答案详情也计入点击量，并与当前题目下其他未保存修改一并提交。
+        currentItem.clickCount = this.normalizeMetricCount(currentItem.clickCount) + 1;
         this.persistSearchState();
-        window.location.href = "/answer/" + answerDocumentId;
+        this.savePendingMetrics(currentItem.questionDocumentId, {
+          onError: (error)=>{
+            this.errorMessage = this.extractErrorMessage(error, "点击量保存失败，请稍后重试。");
+          }
+        }).then(()=>{
+          window.location.href = "/answer/" + answerDocumentId;
+        });
+      },
+      findResultItemByAnswerId(answerDocumentId){
+        if(!answerDocumentId){
+          return null;
+        }
+        for(var index = 0; index < this.results.length; index++){
+          var currentItem = this.results[index] || {};
+          if(currentItem.answerDocumentId === answerDocumentId){
+            return currentItem;
+          }
+        }
+        return null;
       },
       focusKeywordInput(){
         if(this.$refs.keywordInput){

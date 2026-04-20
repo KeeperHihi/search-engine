@@ -53,4 +53,9 @@ public class CourseQaController {
     public CourseQaMetricsClearResponse clearQa() throws IOException {
         return courseQaSearchService.clearQaMetrics();
     }
+
+    @GetMapping("/clearQA")
+    public CourseQaMetricsClearResponse clearQaByGet() throws IOException {
+        return courseQaSearchService.clearQaMetrics();
+    }
 }

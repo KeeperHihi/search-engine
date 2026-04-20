@@ -2,6 +2,7 @@ package com.example.demo.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -49,6 +50,15 @@ class CourseQaControllerTest {
         given(courseQaSearchService.clearQaMetrics()).willReturn(new CourseQaMetricsClearResponse(10));
 
         mockMvc.perform(post("/clearQA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clearedAnswerCount").value(10));
+    }
+
+    @Test
+    void clearQaShouldAlsoSupportGetRequests() throws Exception {
+        given(courseQaSearchService.clearQaMetrics()).willReturn(new CourseQaMetricsClearResponse(10));
+
+        mockMvc.perform(get("/clearQA"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.clearedAnswerCount").value(10));
     }
