@@ -41,6 +41,7 @@ import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
@@ -222,6 +223,9 @@ public class CourseQaSearchService {
         }
 
         BulkRequest bulkRequest = new BulkRequest();
+        // 保存后前端会立刻重新检索，所以这里必须等待 refresh 完成，
+        // 否则第一次重查仍可能读到旧值，看起来像“保存后被清零”。
+        bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL);
         for (CourseQaAnswerMetricsUpdateItem item : normalizedItems) {
             bulkRequest.add(buildMetricsUpdateRequest(
                     item.getAnswerDocumentId(), item.getLikeCount(), item.getClickCount()));
@@ -263,6 +267,8 @@ public class CourseQaSearchService {
                 }
 
                 BulkRequest bulkRequest = new BulkRequest();
+                // clearQA 调用后也可能立刻触发查询，这里同样等待 refresh。
+                bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL);
                 for (SearchHit searchHit : searchHits) {
                     bulkRequest.add(buildMetricsUpdateRequest(searchHit.getId(), 0, 0));
                 }
@@ -308,6 +314,7 @@ public class CourseQaSearchService {
         ImportBuildResult importBuildResult = buildBulkRequests(dataset);
 
         if (importBuildResult.questionRequest.numberOfActions() > 0) {
+            importBuildResult.questionRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL);
             BulkResponse bulkResponse =
                     client.bulk(importBuildResult.questionRequest, RequestOptions.DEFAULT);
             if (bulkResponse.hasFailures()) {
@@ -315,6 +322,7 @@ public class CourseQaSearchService {
             }
         }
         if (importBuildResult.answerRequest.numberOfActions() > 0) {
+            importBuildResult.answerRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL);
             BulkResponse bulkResponse =
                     client.bulk(importBuildResult.answerRequest, RequestOptions.DEFAULT);
             if (bulkResponse.hasFailures()) {
